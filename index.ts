@@ -60,6 +60,11 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
               type: 'string',
               description: 'Optional: Temp folder path (default: .tmp)',
             },
+            outputFormat: {
+              type: 'string',
+              description: 'Output format: summary (default), path (filepath only), json (structured data)',
+              enum: ['summary', 'path', 'json'],
+            },
           },
           required: ['url'],
         },
@@ -126,6 +131,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           query?: string;
           minQuality?: number;
           tempDir?: string;
+          outputFormat?: 'summary' | 'path' | 'json';
         }
       );
 
@@ -156,7 +162,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function handleFetchUrl(args: { url: string; query?: string; minQuality?: number; tempDir?: string }) {
+async function handleFetchUrl(args: {
+  url: string;
+  query?: string;
+  minQuality?: number;
+  tempDir?: string;
+  outputFormat?: 'summary' | 'path' | 'json';
+}) {
   const config = loadConfig({
     minQuality: args.minQuality,
     tempDir: args.tempDir,
@@ -167,13 +179,12 @@ async function handleFetchUrl(args: { url: string; query?: string; minQuality?: 
   await closeBrowser();
 
   if (!result.success) {
+    const errorText =
+      `Error: ${result.error}` +
+      (result.suggestion ? `\nSuggestion: ${result.suggestion}` : '') +
+      (result.quality ? `\nQuality: ${result.quality.score}/100` : '');
     return {
-      content: [
-        {
-          type: 'text',
-          text: `❌ ${result.error}${result.suggestion ? `\n\n💡 ${result.suggestion}` : ''}${result.quality ? `\n📊 Quality: ${result.quality.score}/100` : ''}`,
-        },
-      ],
+      content: [{ type: 'text', text: errorText }],
     };
   }
 
@@ -181,34 +192,58 @@ async function handleFetchUrl(args: { url: string; query?: string; minQuality?: 
 
   if (saveResult.error) {
     return {
-      content: [
-        {
-          type: 'text',
-          text: `❌ Save failed: ${saveResult.error}`,
-        },
-      ],
+      content: [{ type: 'text', text: `Error: Save failed: ${saveResult.error}` }],
     };
   }
 
-  let text = `✅ Cached: ${saveResult.refId}\n\n`;
-  text += `**Title**: ${result.title}\n`;
-  if (result.byline) text += `**Author**: ${result.byline}\n`;
-  if (result.siteName) text += `**Source**: ${result.siteName}\n`;
+  const outputFormat = args.outputFormat || 'summary';
+
+  // Path-only output
+  if (outputFormat === 'path') {
+    return {
+      content: [{ type: 'text', text: saveResult.filepath }],
+    };
+  }
+
+  // JSON output
+  if (outputFormat === 'json') {
+    const jsonData = {
+      success: true,
+      refId: saveResult.refId,
+      title: result.title,
+      byline: result.byline,
+      siteName: result.siteName,
+      excerpt: result.excerpt,
+      url: args.url,
+      filepath: saveResult.filepath,
+      size: result.markdown!.length,
+      tokens: Math.round(result.markdown!.length / 4),
+      quality: result.quality?.score,
+      usedPlaywright: result.usedPlaywright,
+      playwrightReason: result.playwrightReason,
+      query: args.query,
+    };
+    return {
+      content: [{ type: 'text', text: JSON.stringify(jsonData, null, 2) }],
+    };
+  }
+
+  // Summary output (default) - clean, LLM-friendly
+  let text = `Cached: ${saveResult.refId}\n\n`;
+  text += `Title: ${result.title}\n`;
+  if (result.byline) text += `Author: ${result.byline}\n`;
+  if (result.siteName) text += `Source: ${result.siteName}\n`;
   if (result.excerpt) {
     const excerpt = result.excerpt.slice(0, 150);
-    text += `**Summary**: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}\n`;
+    text += `Summary: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}\n`;
   }
-  text += `\n**Saved to**: \`${saveResult.filepath}\`\n`;
-  text += `**Size**: ${result.markdown!.length} chars (~${Math.round(result.markdown!.length / 4)} tokens)\n`;
-  text += `**Quality**: ${result.quality?.score}/100\n`;
+  text += `\nFilepath: ${saveResult.filepath}\n`;
+  text += `Size: ${result.markdown!.length} chars (~${Math.round(result.markdown!.length / 4)} tokens)\n`;
+  text += `Quality: ${result.quality?.score}/100`;
 
   if (result.usedPlaywright) {
-    text += `**Playwright**: Yes (${result.playwrightReason})\n`;
+    text += `\nPlaywright: Yes (${result.playwrightReason})`;
   }
-
-  text += `\n⚠️ **IMPORTANT**: This is only a summary. Full content saved in file above.\n`;
-  text += `📖 **To read**: Use Read tool on \`${saveResult.filepath}\`\n`;
-  text += `📤 **To promote**: Use promote_reference with refId "${saveResult.refId}"`;
 
   return {
     content: [{ type: 'text', text }],
@@ -221,7 +256,7 @@ async function handleListCached(args: { tempDir?: string }) {
 
   if (result.error) {
     return {
-      content: [{ type: 'text', text: `❌ ${result.error}` }],
+      content: [{ type: 'text', text: `Error: ${result.error}` }],
     };
   }
 
@@ -231,19 +266,16 @@ async function handleListCached(args: { tempDir?: string }) {
     };
   }
 
-  let text = `📚 **Cached references** (${result.references.length}):\n\n`;
+  let text = `Cached references (${result.references.length}):\n\n`;
 
   for (const ref of result.references) {
-    text += `**${ref.refId}** | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}\n`;
-    text += `   📅 ${ref.fetchedDate} | 📄 ${Math.round(ref.size / 1024)}KB\n`;
-    text += `   🔗 ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}\n\n`;
+    text += `${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}\n`;
+    text += `  Date: ${ref.fetchedDate} | Size: ${Math.round(ref.size / 1024)}KB\n`;
+    text += `  URL: ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}\n\n`;
   }
 
-  text += `💡 Use **promote_reference** to move to docs folder\n`;
-  text += `💡 Use **delete_cached** to remove`;
-
   return {
-    content: [{ type: 'text', text }],
+    content: [{ type: 'text', text: text.trim() }],
   };
 }
 
@@ -253,7 +285,7 @@ async function handlePromoteReference(args: { refId: string; docsDir?: string })
 
   if (!result.success) {
     return {
-      content: [{ type: 'text', text: `❌ ${result.error}` }],
+      content: [{ type: 'text', text: `Error: ${result.error}` }],
     };
   }
 
@@ -261,7 +293,7 @@ async function handlePromoteReference(args: { refId: string; docsDir?: string })
     content: [
       {
         type: 'text',
-        text: `✅ Promoted ${args.refId}\n\n**From**: ${result.fromPath}\n**To**: ${result.toPath}`,
+        text: `Promoted: ${args.refId}\nFrom: ${result.fromPath}\nTo: ${result.toPath}`,
       },
     ],
   };
@@ -273,7 +305,7 @@ async function handleDeleteCached(args: { refId: string }) {
 
   if (!result.success) {
     return {
-      content: [{ type: 'text', text: `❌ ${result.error}` }],
+      content: [{ type: 'text', text: `Error: ${result.error}` }],
     };
   }
 
@@ -281,7 +313,7 @@ async function handleDeleteCached(args: { refId: string }) {
     content: [
       {
         type: 'text',
-        text: `✅ Deleted ${args.refId}\n\n**File**: ${result.filepath}`,
+        text: `Deleted: ${args.refId}\nFile: ${result.filepath}`,
       },
     ],
   };

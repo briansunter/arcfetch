@@ -10,7 +10,7 @@ import { saveToTemp, listCached, promoteReference, deleteCached } from './src/co
 
 function showHelp(): void {
   console.log(`
-📦 Fetchi v3.0 - Fetch URLs and cache as clean markdown
+Fetchi v3.0 - Fetch URLs and cache as clean markdown
 
 USAGE:
     fetchi <command> [options]
@@ -23,9 +23,14 @@ COMMANDS:
     config            Show current configuration
     help              Show this help message
 
-FETCH OPTIONS:
+OPTIONS:
     -q, --query <text>        Search query (saved as metadata)
-    -o, --output <format>     Output: text, json, summary (default: text)
+    -o, --output <format>     Output format (default: text)
+                              - text: Plain text (LLM-friendly)
+                              - json: Structured JSON
+                              - path: Just the filepath
+                              - summary: REF-ID|filepath
+    --pretty                  Human-friendly output with emojis
     -v, --verbose             Show detailed output
     --min-quality <n>         Minimum quality score 0-100 (default: 60)
     --temp-dir <path>         Temp folder (default: .tmp)
@@ -33,20 +38,23 @@ FETCH OPTIONS:
     --playwright <mode>       Playwright mode: auto, local, docker
 
 EXAMPLES:
-    # Fetch a URL
+    # Fetch a URL (plain output for LLMs)
     fetchi fetch https://example.com/article
 
-    # Fetch with custom quality threshold
-    fetchi fetch https://example.com --min-quality 70
+    # Fetch and get just the filepath
+    fetchi fetch https://example.com -o path
+
+    # Fetch with human-friendly output
+    fetchi fetch https://example.com --pretty
+
+    # Fetch with JSON output
+    fetchi fetch https://example.com -o json
 
     # List cached references
     fetchi list
 
     # Promote to docs folder
     fetchi promote REF-001
-
-    # Delete a reference
-    fetchi delete REF-001
 
 ENVIRONMENT VARIABLES:
     FETCHI_MIN_SCORE          Minimum quality score
@@ -66,8 +74,9 @@ CONFIG FILE:
 interface FetchOptions {
   url: string;
   query?: string;
-  output: 'text' | 'json' | 'summary';
+  output: 'text' | 'json' | 'summary' | 'path';
   verbose: boolean;
+  pretty: boolean;
   minQuality?: number;
   tempDir?: string;
   docsDir?: string;
@@ -107,12 +116,12 @@ async function commandFetch(options: FetchOptions): Promise<void> {
         )
       );
     } else {
-      console.error(`❌ ${result.error}`);
+      console.error(`Error: ${result.error}`);
       if (result.suggestion) {
-        console.error(`💡 ${result.suggestion}`);
+        console.error(`Suggestion: ${result.suggestion}`);
       }
       if (result.quality) {
-        console.error(`📊 Quality: ${result.quality.score}/100`);
+        console.error(`Quality: ${result.quality.score}/100`);
       }
     }
     process.exit(1);
@@ -128,7 +137,7 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     if (options.output === 'json') {
       console.log(JSON.stringify({ success: false, error: saveResult.error }, null, 2));
     } else {
-      console.error(`❌ Save failed: ${saveResult.error}`);
+      console.error(`Error: Save failed: ${saveResult.error}`);
     }
     process.exit(1);
   }
@@ -159,7 +168,10 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     );
   } else if (options.output === 'summary') {
     console.log(`${saveResult.refId}|${saveResult.filepath}`);
-  } else {
+  } else if (options.output === 'path') {
+    console.log(saveResult.filepath);
+  } else if (options.pretty) {
+    // Pretty output with emojis (human-friendly)
     console.log(`✅ Cached: ${saveResult.refId}\n`);
     console.log(`**Title**: ${result.title}`);
     if (result.byline) console.log(`**Author**: ${result.byline}`);
@@ -175,6 +187,22 @@ async function commandFetch(options: FetchOptions): Promise<void> {
       console.log(`**Playwright**: Yes (${result.playwrightReason})`);
     }
     console.log(`\n💡 To promote to docs: fetchi promote ${saveResult.refId}`);
+  } else {
+    // Plain output (LLM-friendly, default)
+    console.log(`Cached: ${saveResult.refId}`);
+    console.log(`Title: ${result.title}`);
+    if (result.byline) console.log(`Author: ${result.byline}`);
+    if (result.siteName) console.log(`Source: ${result.siteName}`);
+    if (result.excerpt) {
+      const excerpt = result.excerpt.slice(0, 150);
+      console.log(`Summary: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}`);
+    }
+    console.log(`Filepath: ${saveResult.filepath}`);
+    console.log(`Size: ${result.markdown!.length} chars (~${Math.round(result.markdown!.length / 4)} tokens)`);
+    console.log(`Quality: ${result.quality?.score}/100`);
+    if (result.usedPlaywright) {
+      console.log(`Playwright: Yes (${result.playwrightReason})`);
+    }
   }
 }
 
@@ -182,12 +210,12 @@ async function commandFetch(options: FetchOptions): Promise<void> {
 // LIST COMMAND
 // ============================================================================
 
-async function commandList(output: 'text' | 'json'): Promise<void> {
+async function commandList(output: 'text' | 'json', pretty: boolean): Promise<void> {
   const config = loadConfig();
   const result = listCached(config);
 
   if (result.error) {
-    console.error(`❌ ${result.error}`);
+    console.error(`Error: ${result.error}`);
     process.exit(1);
   }
 
@@ -201,24 +229,32 @@ async function commandList(output: 'text' | 'json'): Promise<void> {
     return;
   }
 
-  console.log(`📚 Cached references (${result.references.length}):\n`);
-
-  for (const ref of result.references) {
-    console.log(`${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}`);
-    console.log(`   📅 ${ref.fetchedDate} | 📄 ${Math.round(ref.size / 1024)}KB`);
-    console.log(`   🔗 ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
-    console.log('');
+  if (pretty) {
+    console.log(`📚 Cached references (${result.references.length}):\n`);
+    for (const ref of result.references) {
+      console.log(`${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}`);
+      console.log(`   📅 ${ref.fetchedDate} | 📄 ${Math.round(ref.size / 1024)}KB`);
+      console.log(`   🔗 ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
+      console.log('');
+    }
+    console.log(`💡 To promote: fetchi promote <ref-id>`);
+    console.log(`💡 To delete: fetchi delete <ref-id>`);
+  } else {
+    console.log(`Cached references (${result.references.length}):\n`);
+    for (const ref of result.references) {
+      console.log(`${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}`);
+      console.log(`  Date: ${ref.fetchedDate} | Size: ${Math.round(ref.size / 1024)}KB`);
+      console.log(`  URL: ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
+      console.log('');
+    }
   }
-
-  console.log(`💡 To promote: fetchi promote <ref-id>`);
-  console.log(`💡 To delete: fetchi delete <ref-id>`);
 }
 
 // ============================================================================
 // PROMOTE COMMAND
 // ============================================================================
 
-async function commandPromote(refId: string, output: 'text' | 'json'): Promise<void> {
+async function commandPromote(refId: string, output: 'text' | 'json', pretty: boolean): Promise<void> {
   const config = loadConfig();
   const result = promoteReference(config, refId);
 
@@ -229,20 +265,26 @@ async function commandPromote(refId: string, output: 'text' | 'json'): Promise<v
   }
 
   if (!result.success) {
-    console.error(`❌ ${result.error}`);
+    console.error(`Error: ${result.error}`);
     process.exit(1);
   }
 
-  console.log(`✅ Promoted ${refId}`);
-  console.log(`   From: ${result.fromPath}`);
-  console.log(`   To:   ${result.toPath}`);
+  if (pretty) {
+    console.log(`✅ Promoted ${refId}`);
+    console.log(`   From: ${result.fromPath}`);
+    console.log(`   To:   ${result.toPath}`);
+  } else {
+    console.log(`Promoted: ${refId}`);
+    console.log(`From: ${result.fromPath}`);
+    console.log(`To: ${result.toPath}`);
+  }
 }
 
 // ============================================================================
 // DELETE COMMAND
 // ============================================================================
 
-async function commandDelete(refId: string, output: 'text' | 'json'): Promise<void> {
+async function commandDelete(refId: string, output: 'text' | 'json', pretty: boolean): Promise<void> {
   const config = loadConfig();
   const result = deleteCached(config, refId);
 
@@ -253,12 +295,17 @@ async function commandDelete(refId: string, output: 'text' | 'json'): Promise<vo
   }
 
   if (!result.success) {
-    console.error(`❌ ${result.error}`);
+    console.error(`Error: ${result.error}`);
     process.exit(1);
   }
 
-  console.log(`✅ Deleted ${refId}`);
-  console.log(`   File: ${result.filepath}`);
+  if (pretty) {
+    console.log(`✅ Deleted ${refId}`);
+    console.log(`   File: ${result.filepath}`);
+  } else {
+    console.log(`Deleted: ${refId}`);
+    console.log(`File: ${result.filepath}`);
+  }
 }
 
 // ============================================================================
@@ -267,7 +314,7 @@ async function commandDelete(refId: string, output: 'text' | 'json'): Promise<vo
 
 async function commandConfig(): Promise<void> {
   const config = loadConfig();
-  console.log('📋 Current configuration:\n');
+  console.log('Current configuration:\n');
   console.log(JSON.stringify(config, null, 2));
 }
 
@@ -276,8 +323,9 @@ async function commandConfig(): Promise<void> {
 // ============================================================================
 
 interface ParsedOptions {
-  output: 'text' | 'json' | 'summary';
+  output: 'text' | 'json' | 'summary' | 'path';
   verbose: boolean;
+  pretty: boolean;
   query?: string;
   minQuality?: number;
   tempDir?: string;
@@ -289,13 +337,14 @@ function parseArgs(): { command: string; args: string[]; options: ParsedOptions 
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    return { command: 'help', args: [], options: { output: 'text', verbose: false } };
+    return { command: 'help', args: [], options: { output: 'text', verbose: false, pretty: false } };
   }
 
   const command = args[0];
   const options: ParsedOptions = {
     output: 'text',
     verbose: false,
+    pretty: false,
   };
   const positionalArgs: string[] = [];
 
@@ -307,12 +356,14 @@ function parseArgs(): { command: string; args: string[]; options: ParsedOptions 
       options.query = next;
       i++;
     } else if (arg === '-o' || arg === '--output') {
-      if (next === 'text' || next === 'json' || next === 'summary') {
+      if (next === 'text' || next === 'json' || next === 'summary' || next === 'path') {
         options.output = next;
       }
       i++;
     } else if (arg === '-v' || arg === '--verbose') {
       options.verbose = true;
+    } else if (arg === '--pretty') {
+      options.pretty = true;
     } else if (arg === '--min-quality') {
       options.minQuality = parseInt(next, 10);
       i++;
@@ -328,7 +379,7 @@ function parseArgs(): { command: string; args: string[]; options: ParsedOptions 
       }
       i++;
     } else if (arg === '-h' || arg === '--help') {
-      return { command: 'help', args: [], options: { output: 'text', verbose: false } };
+      return { command: 'help', args: [], options: { output: 'text', verbose: false, pretty: false } };
     } else if (!arg.startsWith('-')) {
       positionalArgs.push(arg);
     }
@@ -348,7 +399,7 @@ async function main(): Promise<void> {
     switch (command) {
       case 'fetch':
         if (args.length === 0) {
-          console.error('❌ URL required. Usage: fetchi fetch <url>');
+          console.error('Error: URL required. Usage: fetchi fetch <url>');
           process.exit(1);
         }
         await commandFetch({
@@ -356,6 +407,7 @@ async function main(): Promise<void> {
           query: options.query,
           output: options.output,
           verbose: options.verbose,
+          pretty: options.pretty,
           minQuality: options.minQuality,
           tempDir: options.tempDir,
           docsDir: options.docsDir,
@@ -364,23 +416,23 @@ async function main(): Promise<void> {
         break;
 
       case 'list':
-        await commandList(options.output === 'json' ? 'json' : 'text');
+        await commandList(options.output === 'json' ? 'json' : 'text', options.pretty);
         break;
 
       case 'promote':
         if (args.length === 0) {
-          console.error('❌ Reference ID required. Usage: fetchi promote <ref-id>');
+          console.error('Error: Reference ID required. Usage: fetchi promote <ref-id>');
           process.exit(1);
         }
-        await commandPromote(args[0], options.output === 'json' ? 'json' : 'text');
+        await commandPromote(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
         break;
 
       case 'delete':
         if (args.length === 0) {
-          console.error('❌ Reference ID required. Usage: fetchi delete <ref-id>');
+          console.error('Error: Reference ID required. Usage: fetchi delete <ref-id>');
           process.exit(1);
         }
-        await commandDelete(args[0], options.output === 'json' ? 'json' : 'text');
+        await commandDelete(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
         break;
 
       case 'config':
@@ -392,12 +444,12 @@ async function main(): Promise<void> {
         break;
     }
   } catch (error) {
-    console.error('❌ Error:', error instanceof Error ? error.message : String(error));
+    console.error('Error:', error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  console.error('❌ Unexpected error:', err);
+  console.error('Unexpected error:', err);
   process.exit(1);
 });
