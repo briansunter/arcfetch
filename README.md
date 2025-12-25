@@ -1,4 +1,4 @@
-# Fetchi
+# sofetch
 
 Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering fallback via Playwright (local or Docker).
 
@@ -28,16 +28,16 @@ docker pull mcr.microsoft.com/playwright:v1.40.0-jammy
 
 ```bash
 # Fetch a URL
-fetchi fetch https://example.com/article
+sofetch fetch https://example.com/article
 
 # List cached references
-fetchi list
+sofetch list
 
 # Promote to docs folder
-fetchi promote REF-001
+sofetch promote REF-001
 
 # Delete a reference
-fetchi delete REF-001
+sofetch delete REF-001
 ```
 
 ### MCP Server
@@ -47,9 +47,9 @@ Add to your Claude Code MCP configuration:
 ```json
 {
   "mcpServers": {
-    "fetchi": {
+    "sofetch": {
       "command": "bun",
-      "args": ["run", "/path/to/fetchi/index.ts"]
+      "args": ["run", "/path/to/sofetch/index.ts"]
     }
   }
 }
@@ -62,7 +62,7 @@ Add to your Claude Code MCP configuration:
 Fetch URL and save to temp folder.
 
 ```bash
-fetchi fetch <url> [options]
+sofetch fetch <url> [options]
 
 Options:
   -q, --query <text>      Search query (saved as metadata)
@@ -79,7 +79,7 @@ Options:
 List all cached references.
 
 ```bash
-fetchi list [-o json]
+sofetch list [-o json]
 ```
 
 ### promote
@@ -87,7 +87,7 @@ fetchi list [-o json]
 Move reference from temp to docs folder.
 
 ```bash
-fetchi promote <ref-id>
+sofetch promote <ref-id>
 ```
 
 ### delete
@@ -95,7 +95,7 @@ fetchi promote <ref-id>
 Delete a cached reference.
 
 ```bash
-fetchi delete <ref-id>
+sofetch delete <ref-id>
 ```
 
 ### config
@@ -103,7 +103,7 @@ fetchi delete <ref-id>
 Show current configuration.
 
 ```bash
-fetchi config
+sofetch config
 ```
 
 ## MCP Tools
@@ -119,7 +119,7 @@ fetchi config
 
 ### Config File
 
-Create `fetchi.config.json` in your project root:
+Create `sofetch.config.json` in your project root:
 
 ```json
 {
@@ -142,11 +142,11 @@ Create `fetchi.config.json` in your project root:
 ### Environment Variables
 
 ```bash
-FETCHI_MIN_SCORE=60
-FETCHI_TEMP_DIR=.tmp
-FETCHI_DOCS_DIR=docs/ai/references
-FETCHI_PLAYWRIGHT_MODE=auto
-FETCHI_DOCKER_IMAGE=mcr.microsoft.com/playwright:v1.40.0-jammy
+SOFETCH_MIN_SCORE=60
+SOFETCH_TEMP_DIR=.tmp
+SOFETCH_DOCS_DIR=docs/ai/references
+SOFETCH_PLAYWRIGHT_MODE=auto
+SOFETCH_DOCKER_IMAGE=mcr.microsoft.com/playwright:v1.40.0-jammy
 ```
 
 ## Quality Pipeline
@@ -192,20 +192,20 @@ docs/ai/references/            # Permanent docs (after promote)
 ### Fetch with custom quality threshold
 
 ```bash
-fetchi fetch https://spa-heavy-site.com --min-quality 70 --playwright docker
+sofetch fetch https://spa-heavy-site.com --min-quality 70 --playwright docker
 ```
 
 ### Fetch and get JSON output
 
 ```bash
-fetchi fetch https://example.com -o json
+sofetch fetch https://example.com -o json
 ```
 
 ### Use in scripts
 
 ```bash
 # Get just the ref ID and path
-result=$(fetchi fetch https://example.com -o summary)
+result=$(sofetch fetch https://example.com -o summary)
 ref_id=$(echo $result | cut -d'|' -f1)
 filepath=$(echo $result | cut -d'|' -f2)
 ```

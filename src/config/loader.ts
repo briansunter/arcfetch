@@ -8,9 +8,9 @@ type DeepPartial<T> = {
 };
 
 const CONFIG_FILES = [
-  'fetchi.config.json',
-  '.fetchirc',
-  '.fetchirc.json',
+  'sofetch.config.json',
+  '.sofetchrc',
+  '.sofetchrc.json',
 ];
 
 export function findConfigFile(cwd: string = process.cwd()): string | null {
@@ -35,37 +35,37 @@ export function loadConfigFromFile(path: string): Partial<FetchiConfig> {
 
 export function loadConfigFromEnv(): DeepPartial<FetchiConfig> {
   const config: DeepPartial<FetchiConfig> = {};
-  
-  if (process.env.FETCHI_MIN_SCORE) {
+
+  if (process.env.SOFETCH_MIN_SCORE) {
     config.quality = config.quality || {};
-    config.quality.minScore = parseInt(process.env.FETCHI_MIN_SCORE, 10);
+    config.quality.minScore = parseInt(process.env.SOFETCH_MIN_SCORE, 10);
   }
-  if (process.env.FETCHI_JS_RETRY_THRESHOLD) {
+  if (process.env.SOFETCH_JS_RETRY_THRESHOLD) {
     config.quality = config.quality || {};
-    config.quality.jsRetryThreshold = parseInt(process.env.FETCHI_JS_RETRY_THRESHOLD, 10);
+    config.quality.jsRetryThreshold = parseInt(process.env.SOFETCH_JS_RETRY_THRESHOLD, 10);
   }
-  
-  if (process.env.FETCHI_TEMP_DIR) {
+
+  if (process.env.SOFETCH_TEMP_DIR) {
     config.paths = config.paths || {};
-    config.paths.tempDir = process.env.FETCHI_TEMP_DIR;
+    config.paths.tempDir = process.env.SOFETCH_TEMP_DIR;
   }
-  if (process.env.FETCHI_DOCS_DIR) {
+  if (process.env.SOFETCH_DOCS_DIR) {
     config.paths = config.paths || {};
-    config.paths.docsDir = process.env.FETCHI_DOCS_DIR;
+    config.paths.docsDir = process.env.SOFETCH_DOCS_DIR;
   }
-  
-  if (process.env.FETCHI_PLAYWRIGHT_MODE) {
-    const mode = process.env.FETCHI_PLAYWRIGHT_MODE;
+
+  if (process.env.SOFETCH_PLAYWRIGHT_MODE) {
+    const mode = process.env.SOFETCH_PLAYWRIGHT_MODE;
     if (mode === 'local' || mode === 'docker' || mode === 'auto') {
       config.playwright = config.playwright || {};
       config.playwright.mode = mode;
     }
   }
-  if (process.env.FETCHI_DOCKER_IMAGE) {
+  if (process.env.SOFETCH_DOCKER_IMAGE) {
     config.playwright = config.playwright || {};
-    config.playwright.dockerImage = process.env.FETCHI_DOCKER_IMAGE;
+    config.playwright.dockerImage = process.env.SOFETCH_DOCKER_IMAGE;
   }
-  
+
   return config;
 }
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fetchi is a URL fetching and article extraction tool that converts web pages to clean markdown. It operates as both a CLI tool and an MCP server. The key value proposition is automatic JavaScript rendering fallback via Playwright when simple HTTP fetching produces low-quality results.
+Sofetch is a URL fetching and article extraction tool that converts web pages to clean markdown. It operates as both a CLI tool and an MCP server. The key value proposition is automatic JavaScript rendering fallback via Playwright when simple HTTP fetching produces low-quality results.
 
 ## Commands
 
@@ -53,7 +53,7 @@ Key modules:
 ### Configuration (`src/config/`)
 Config loading priority: CLI args → env vars → config file → defaults
 
-Config files checked: `fetchi.config.json`, `.fetchirc`, `.fetchirc.json`
+Config files checked: `sofetch.config.json`, `.sofetchrc`, `.sofetchrc.json`
 
 Schema defined with Zod in `schema.ts`. Key thresholds:
 - `quality.minScore` (default: 60) - Below this, content is rejected

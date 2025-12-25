@@ -1,11 +1,11 @@
 {
-  "name": "fetchi",
+  "name": "sofetch",
   "version": "3.0.0",
   "description": "Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering via Playwright/Docker.",
   "type": "module",
   "main": "index.ts",
   "bin": {
-    "fetchi": "cli.ts"
+    "sofetch": "cli.ts"
   },
   "files": [
     "cli.ts",
@@ -62,7 +62,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/briansunter/fetchi.git"
+    "url": "git+https://github.com/briansunter/sofetch.git"
   },
   "publishConfig": {
     "access": "public"

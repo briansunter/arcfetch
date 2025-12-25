@@ -10,23 +10,23 @@ describe('config loader', () => {
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
     // Clear environment variables before each test
-    delete process.env.FETCHI_MIN_SCORE;
-    delete process.env.FETCHI_JS_RETRY_THRESHOLD;
-    delete process.env.FETCHI_TEMP_DIR;
-    delete process.env.FETCHI_DOCS_DIR;
-    delete process.env.FETCHI_PLAYWRIGHT_MODE;
-    delete process.env.FETCHI_DOCKER_IMAGE;
+    delete process.env.SOFETCH_MIN_SCORE;
+    delete process.env.SOFETCH_JS_RETRY_THRESHOLD;
+    delete process.env.SOFETCH_TEMP_DIR;
+    delete process.env.SOFETCH_DOCS_DIR;
+    delete process.env.SOFETCH_PLAYWRIGHT_MODE;
+    delete process.env.SOFETCH_DOCKER_IMAGE;
   });
 
   afterEach(() => {
     rmSync(TEST_DIR, { recursive: true, force: true });
     // Clean up environment variables
-    delete process.env.FETCHI_MIN_SCORE;
-    delete process.env.FETCHI_JS_RETRY_THRESHOLD;
-    delete process.env.FETCHI_TEMP_DIR;
-    delete process.env.FETCHI_DOCS_DIR;
-    delete process.env.FETCHI_PLAYWRIGHT_MODE;
-    delete process.env.FETCHI_DOCKER_IMAGE;
+    delete process.env.SOFETCH_MIN_SCORE;
+    delete process.env.SOFETCH_JS_RETRY_THRESHOLD;
+    delete process.env.SOFETCH_TEMP_DIR;
+    delete process.env.SOFETCH_DOCS_DIR;
+    delete process.env.SOFETCH_PLAYWRIGHT_MODE;
+    delete process.env.SOFETCH_DOCKER_IMAGE;
   });
 
   describe('findConfigFile', () => {
@@ -35,27 +35,27 @@ describe('config loader', () => {
       expect(result).toBeNull();
     });
 
-    test('finds fetchi.config.json first', () => {
-      writeFileSync(join(TEST_DIR, 'fetchi.config.json'), '{}');
-      writeFileSync(join(TEST_DIR, '.fetchirc'), '{}');
+    test('finds sofetch.config.json first', () => {
+      writeFileSync(join(TEST_DIR, 'sofetch.config.json'), '{}');
+      writeFileSync(join(TEST_DIR, '.sofetchrc'), '{}');
 
       const result = findConfigFile(TEST_DIR);
-      expect(result).toBe(join(TEST_DIR, 'fetchi.config.json'));
+      expect(result).toBe(join(TEST_DIR, 'sofetch.config.json'));
     });
 
-    test('finds .fetchirc when fetchi.config.json does not exist', () => {
-      writeFileSync(join(TEST_DIR, '.fetchirc'), '{}');
-      writeFileSync(join(TEST_DIR, '.fetchirc.json'), '{}');
+    test('finds .sofetchrc when sofetch.config.json does not exist', () => {
+      writeFileSync(join(TEST_DIR, '.sofetchrc'), '{}');
+      writeFileSync(join(TEST_DIR, '.sofetchrc.json'), '{}');
 
       const result = findConfigFile(TEST_DIR);
-      expect(result).toBe(join(TEST_DIR, '.fetchirc'));
+      expect(result).toBe(join(TEST_DIR, '.sofetchrc'));
     });
 
-    test('finds .fetchirc.json when others do not exist', () => {
-      writeFileSync(join(TEST_DIR, '.fetchirc.json'), '{}');
+    test('finds .sofetchrc.json when others do not exist', () => {
+      writeFileSync(join(TEST_DIR, '.sofetchrc.json'), '{}');
 
       const result = findConfigFile(TEST_DIR);
-      expect(result).toBe(join(TEST_DIR, '.fetchirc.json'));
+      expect(result).toBe(join(TEST_DIR, '.sofetchrc.json'));
     });
   });
 
@@ -114,52 +114,52 @@ describe('config loader', () => {
       expect(result).toEqual({});
     });
 
-    test('loads FETCHI_MIN_SCORE', () => {
-      process.env.FETCHI_MIN_SCORE = '75';
+    test('loads SOFETCH_MIN_SCORE', () => {
+      process.env.SOFETCH_MIN_SCORE = '75';
       const result = loadConfigFromEnv();
       expect(result.quality?.minScore).toBe(75);
     });
 
-    test('loads FETCHI_JS_RETRY_THRESHOLD', () => {
-      process.env.FETCHI_JS_RETRY_THRESHOLD = '90';
+    test('loads SOFETCH_JS_RETRY_THRESHOLD', () => {
+      process.env.SOFETCH_JS_RETRY_THRESHOLD = '90';
       const result = loadConfigFromEnv();
       expect(result.quality?.jsRetryThreshold).toBe(90);
     });
 
-    test('loads FETCHI_TEMP_DIR', () => {
-      process.env.FETCHI_TEMP_DIR = '/my/temp';
+    test('loads SOFETCH_TEMP_DIR', () => {
+      process.env.SOFETCH_TEMP_DIR = '/my/temp';
       const result = loadConfigFromEnv();
       expect(result.paths?.tempDir).toBe('/my/temp');
     });
 
-    test('loads FETCHI_DOCS_DIR', () => {
-      process.env.FETCHI_DOCS_DIR = '/my/docs';
+    test('loads SOFETCH_DOCS_DIR', () => {
+      process.env.SOFETCH_DOCS_DIR = '/my/docs';
       const result = loadConfigFromEnv();
       expect(result.paths?.docsDir).toBe('/my/docs');
     });
 
-    test('loads FETCHI_PLAYWRIGHT_MODE with valid value', () => {
-      process.env.FETCHI_PLAYWRIGHT_MODE = 'docker';
+    test('loads SOFETCH_PLAYWRIGHT_MODE with valid value', () => {
+      process.env.SOFETCH_PLAYWRIGHT_MODE = 'docker';
       const result = loadConfigFromEnv();
       expect(result.playwright?.mode).toBe('docker');
     });
 
-    test('ignores FETCHI_PLAYWRIGHT_MODE with invalid value', () => {
-      process.env.FETCHI_PLAYWRIGHT_MODE = 'invalid';
+    test('ignores SOFETCH_PLAYWRIGHT_MODE with invalid value', () => {
+      process.env.SOFETCH_PLAYWRIGHT_MODE = 'invalid';
       const result = loadConfigFromEnv();
       expect(result.playwright?.mode).toBeUndefined();
     });
 
-    test('loads FETCHI_DOCKER_IMAGE', () => {
-      process.env.FETCHI_DOCKER_IMAGE = 'custom/playwright:latest';
+    test('loads SOFETCH_DOCKER_IMAGE', () => {
+      process.env.SOFETCH_DOCKER_IMAGE = 'custom/playwright:latest';
       const result = loadConfigFromEnv();
       expect(result.playwright?.dockerImage).toBe('custom/playwright:latest');
     });
 
     test('loads multiple env vars together', () => {
-      process.env.FETCHI_MIN_SCORE = '55';
-      process.env.FETCHI_TEMP_DIR = '/env/temp';
-      process.env.FETCHI_PLAYWRIGHT_MODE = 'local';
+      process.env.SOFETCH_MIN_SCORE = '55';
+      process.env.SOFETCH_TEMP_DIR = '/env/temp';
+      process.env.SOFETCH_PLAYWRIGHT_MODE = 'local';
 
       const result = loadConfigFromEnv();
       expect(result.quality?.minScore).toBe(55);
@@ -195,8 +195,8 @@ describe('config loader', () => {
     });
 
     test('env vars override defaults', () => {
-      process.env.FETCHI_MIN_SCORE = '55';
-      process.env.FETCHI_PLAYWRIGHT_MODE = 'local';
+      process.env.SOFETCH_MIN_SCORE = '55';
+      process.env.SOFETCH_PLAYWRIGHT_MODE = 'local';
 
       const config = loadConfig();
       expect(config.quality.minScore).toBe(55);
@@ -204,7 +204,7 @@ describe('config loader', () => {
     });
 
     test('CLI overrides env vars', () => {
-      process.env.FETCHI_MIN_SCORE = '55';
+      process.env.SOFETCH_MIN_SCORE = '55';
       const config = loadConfig({ minQuality: 40 });
       expect(config.quality.minScore).toBe(40);
     });
@@ -229,7 +229,7 @@ describe('config loader', () => {
   describe('precedence order', () => {
     test('defaults < env < CLI overrides', () => {
       // Set env var
-      process.env.FETCHI_MIN_SCORE = '55';
+      process.env.SOFETCH_MIN_SCORE = '55';
 
       // Without CLI override, env takes precedence
       const configFromEnv = loadConfig();

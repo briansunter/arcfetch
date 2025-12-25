@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Fetchi MCP Server v3.0
+ * Sofetch MCP Server v3.0
  *
  * Tools:
  * - fetch_url: Fetch URL with automatic JS fallback, save to temp
@@ -18,7 +18,7 @@ import { saveToTemp, listCached, promoteReference, deleteCached } from './src/co
 
 const server = new Server(
   {
-    name: 'fetchi',
+    name: 'sofetch',
     version: '3.0.0',
   },
   {
@@ -322,7 +322,7 @@ async function handleDeleteCached(args: { refId: string }) {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Fetchi MCP server v3.0 running on stdio');
+  console.error('Sofetch MCP server v3.0 running on stdio');
 }
 
 main().catch((error) => {

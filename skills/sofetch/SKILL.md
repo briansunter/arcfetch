@@ -1,24 +1,24 @@
 ---
-name: Fetchi
-description: Use when working with @briansunter/fetchi CLI for URL fetching, article extraction, and cache management. Triggers: fetching URLs, batch processing, managing cached references, promoting/deleting content, or integrating fetchi into automation pipelines.
+name: sofetch
+description: Use when working with @briansunter/sofetch CLI for URL fetching, article extraction, and cache management. Triggers: fetching URLs, batch processing, managing cached references, promoting/deleting content, or integrating sofetch into automation pipelines.
 ---
 
-# Fetchi
+# sofetch
 
-Guide for using the Fetchi CLI tool to fetch web content, extract articles, and manage cached references.
+Guide for using the sofetch CLI tool to fetch web content, extract articles, and manage cached references.
 
 ## Overview
 
-Fetchi converts web pages to clean markdown with automatic JavaScript rendering fallback via Playwright when needed.
+sofetch converts web pages to clean markdown with automatic JavaScript rendering fallback via Playwright when needed.
 
 ## Installation
 
 ```bash
 # Install globally
-bun install -g @briansunter/fetchi
+bun install -g @briansunter/sofetch
 
 # Or use via bunx
-bunx @briansunter/fetchi <command>
+bunx @briansunter/sofetch <command>
 ```
 
 ## Commands
@@ -28,7 +28,7 @@ bunx @briansunter/fetchi <command>
 Fetch URL and save to temp folder.
 
 ```bash
-bunx @briansunter/fetchi fetch <url> [options]
+bunx @briansunter/sofetch fetch <url> [options]
 ```
 
 **Options:**
@@ -49,22 +49,22 @@ bunx @briansunter/fetchi fetch <url> [options]
 
 ```bash
 # Basic fetch (plain text output for LLMs)
-bunx @briansunter/fetchi fetch https://example.com/article
+bunx @briansunter/sofetch fetch https://example.com/article
 
 # Get just the filepath
-bunx @briansunter/fetchi fetch https://example.com -o path
+bunx @briansunter/sofetch fetch https://example.com -o path
 
 # Human-friendly output with emojis
-bunx @briansunter/fetchi fetch https://example.com --pretty
+bunx @briansunter/sofetch fetch https://example.com --pretty
 
 # JSON output for scripting
-bunx @briansunter/fetchi fetch https://example.com -o json
+bunx @briansunter/sofetch fetch https://example.com -o json
 
 # With search query metadata
-bunx @briansunter/fetchi fetch https://example.com -q "search term"
+bunx @briansunter/sofetch fetch https://example.com -q "search term"
 
 # Verbose mode to see what's happening
-bunx @briansunter/fetchi fetch https://example.com -v
+bunx @briansunter/sofetch fetch https://example.com -v
 ```
 
 **Process:** HTTP fetch → Extract content → Quality score (0-100) → Playwright retry if score < 85
@@ -74,7 +74,7 @@ bunx @briansunter/fetchi fetch https://example.com -v
 List all cached references.
 
 ```bash
-bunx @briansunter/fetchi list [options]
+bunx @briansunter/sofetch list [options]
 ```
 
 **Options:**
@@ -85,13 +85,13 @@ bunx @briansunter/fetchi list [options]
 
 ```bash
 # List references (plain text)
-bunx @briansunter/fetchi list
+bunx @briansunter/sofetch list
 
 # Pretty output with emojis
-bunx @briansunter/fetchi list --pretty
+bunx @briansunter/sofetch list --pretty
 
 # JSON output
-bunx @briansunter/fetchi list -o json
+bunx @briansunter/sofetch list -o json
 ```
 
 ### promote
@@ -99,7 +99,7 @@ bunx @briansunter/fetchi list -o json
 Move reference from temp to docs folder.
 
 ```bash
-bunx @briansunter/fetchi promote <ref-id> [options]
+bunx @briansunter/sofetch promote <ref-id> [options]
 ```
 
 **Options:**
@@ -109,9 +109,9 @@ bunx @briansunter/fetchi promote <ref-id> [options]
 **Examples:**
 
 ```bash
-bunx @briansunter/fetchi promote REF-001
-bunx @briansunter/fetchi promote REF-001 --pretty
-bunx @briansunter/fetchi promote REF-001 -o json
+bunx @briansunter/sofetch promote REF-001
+bunx @briansunter/sofetch promote REF-001 --pretty
+bunx @briansunter/sofetch promote REF-001 -o json
 ```
 
 ### delete
@@ -119,7 +119,7 @@ bunx @briansunter/fetchi promote REF-001 -o json
 Delete a cached reference.
 
 ```bash
-bunx @briansunter/fetchi delete <ref-id> [options]
+bunx @briansunter/sofetch delete <ref-id> [options]
 ```
 
 **Options:**
@@ -129,8 +129,8 @@ bunx @briansunter/fetchi delete <ref-id> [options]
 **Examples:**
 
 ```bash
-bunx @briansunter/fetchi delete REF-001
-bunx @briansunter/fetchi delete REF-001 --pretty
+bunx @briansunter/sofetch delete REF-001
+bunx @briansunter/sofetch delete REF-001 --pretty
 ```
 
 ### config
@@ -138,7 +138,7 @@ bunx @briansunter/fetchi delete REF-001 --pretty
 Show current configuration.
 
 ```bash
-bunx @briansunter/fetchi config
+bunx @briansunter/sofetch config
 ```
 
 Displays all config settings including quality thresholds, paths, and Playwright mode.
@@ -148,41 +148,41 @@ Displays all config settings including quality thresholds, paths, and Playwright
 ### Single Article
 
 ```bash
-bunx @briansunter/fetchi fetch https://example.com/guide
+bunx @briansunter/sofetch fetch https://example.com/guide
 cat .tmp/REF-001-guide.md  # Review
-bunx @briansunter/fetchi promote REF-001  # If good
+bunx @briansunter/sofetch promote REF-001  # If good
 ```
 
 ### Batch Fetch
 
 ```bash
 for url in "url1" "url2" "url3"; do
-  bunx @briansunter/fetchi fetch "$url"
+  bunx @briansunter/sofetch fetch "$url"
 done
 
-bunx @briansunter/fetchi list  # Review all
-bunx @briansunter/fetchi promote REF-001  # Promote desired
+bunx @briansunter/sofetch list  # Review all
+bunx @briansunter/sofetch promote REF-001  # Promote desired
 ```
 
 ### Cleanup Temp References
 
 ```bash
-bunx @briansunter/fetchi list
-bunx @briansunter/fetchi delete REF-001  # Delete unwanted
+bunx @briansunter/sofetch list
+bunx @briansunter/sofetch delete REF-001  # Delete unwanted
 ```
 
 ### Scripting with JSON Output
 
 ```bash
 # Fetch and parse result
-RESULT=$(bunx @briansunter/fetchi fetch https://example.com -o json)
+RESULT=$(bunx @briansunter/sofetch fetch https://example.com -o json)
 REF_ID=$(echo "$RESULT" | jq -r '.refId')
 FILEPATH=$(echo "$RESULT" | jq -r '.filepath')
 QUALITY=$(echo "$RESULT" | jq -r '.quality')
 
 # Conditional promote based on quality
 if (( QUALITY >= 85 )); then
-  bunx @briansunter/fetchi promote "$REF_ID"
+  bunx @briansunter/sofetch promote "$REF_ID"
 fi
 ```
 
@@ -192,11 +192,11 @@ fi
 
 1. CLI arguments
 2. Environment variables
-3. `fetchi.config.json`
-4. `.fetchirc`
-5. `.fetchirc.json`
+3. `sofetch.config.json`
+4. `.sofetchrc`
+5. `.sofetchrc.json`
 
-### Create `fetchi.config.json`
+### Create `sofetch.config.json`
 
 ```json
 {
@@ -217,10 +217,10 @@ fi
 ### Environment Variables
 
 ```bash
-export FETCHI_MIN_SCORE=60
-export FETCHI_TEMP_DIR=".tmp"
-export FETCHI_DOCS_DIR="docs/ai/references"
-export FETCHI_PLAYWRIGHT_MODE="auto"
+export SOFETCH_MIN_SCORE=60
+export SOFETCH_TEMP_DIR=".tmp"
+export SOFETCH_DOCS_DIR="docs/ai/references"
+export SOFETCH_PLAYWRIGHT_MODE="auto"
 ```
 
 ### Quality Thresholds
@@ -237,7 +237,7 @@ export FETCHI_PLAYWRIGHT_MODE="auto"
 ## MCP Server
 
 ```bash
-bunx @briansunter/fetchi
+bunx @briansunter/sofetch
 # Tools: fetch_url, list_cached, promote_reference, delete_cached
 ```
 
@@ -269,5 +269,5 @@ Content...
 
 ## References
 
-- Project: https://github.com/briansunter/fetchi
+- Project: https://github.com/briansunter/sofetch
 - MCP: https://modelcontextprotocol.io

@@ -27,6 +27,34 @@ The workflow already has:
 
 ## Setup Instructions
 
+### Step 0: First-Time Publish (Manual, One-Time)
+
+**Before setting up Trusted Publishing, you must publish the package once manually.**
+
+npm doesn't show Trusted Publishing options until the package exists on the registry.
+
+**Option A: Login and publish**
+
+```bash
+# Login to npm (prompts for username/password/OTP)
+npm login
+
+# Publish the package
+bunx npm publish --access public
+```
+
+**Option B: Use a token**
+
+```bash
+# 1. Create token at https://www.npmjs.com/settings/tokens
+# 2. Publish with token
+bunx npm publish --token <YOUR_TOKEN> --access public
+```
+
+**After first publish:**
+- Package exists on npm: https://www.npmjs.com/package/sofetch
+- You can now configure Trusted Publishing in Step 1
+
 ### Step 1: Enable Trusted Publishing (Recommended, No Tokens)
 
 1. Go to https://www.npmjs.com/settings/briansunter/access
@@ -39,7 +67,7 @@ The workflow already has:
    | Field | Value |
    |-------|-------|
    | GitHub Organization / User | `briansunter` |
-   | Repository | `fetchi` |
+   | Repository | `sofetch` |
    | Workflow filename | `publish.yml` |
    | Environment name | (leave empty) |
 
@@ -74,8 +102,8 @@ The GitHub Actions workflow will automatically:
 After publishing, verify provenance:
 
 ```bash
-npm view fetchi versions
-npm view fetchi --json | jq '.dist.attestations'
+npm view sofetch versions
+npm view sofetch --json | jq '.dist.attestations'
 ```
 
 ## Token Fallback (Optional)
