@@ -1,3 +1,34 @@
+# [2.0.0](https://github.com/briansunter/archfetch/compare/v1.0.0...v2.0.0) (2025-12-26)
+
+
+### Code Refactoring
+
+* remove Docker mode and add force-playwright flag ([9bb491c](https://github.com/briansunter/archfetch/commit/9bb491c1b4ea3dda95590830afeb30074dea47cb))
+
+
+### BREAKING CHANGES
+
+* Remove Docker mode for Playwright
+
+- Remove Docker browser manager (docker.ts)
+- Remove --playwright <mode> CLI flag
+- Remove SOFETCH_PLAYWRIGHT_MODE and SOFETCH_DOCKER_IMAGE env vars
+- Simplify to local Playwright only (faster, more reliable)
+
+Features:
+- Add --force-playwright flag to skip simple fetch
+- Add --wait-strategy flag (networkidle/domcontentloaded/load)
+- Update postinstall to avoid redownloading Playwright
+
+Fixes:
+- Fix container reuse logic (no longer needed)
+- Update tests to remove Docker assertions
+- Update package.json description
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+
 # 1.0.0 (2025-12-26)
 
 
