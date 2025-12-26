@@ -1,168 +1,113 @@
 # npm Publishing Setup
 
-This document explains how to set up automated npm publishing with GitHub Actions using Bun and OIDC (Trusted Publishing).
+This document explains how to set up automated npm publishing with GitHub Actions using semantic-release and Bitwarden Secrets Manager (BWS).
 
 ## Overview
 
-The publish workflow:
-- Triggers on version tags (e.g., `v3.0.1`)
+The release workflow:
+- Triggers on push to `master` branch
 - Uses Bun for install, lint, typecheck, and test
-- Uses `bunx npm@11.5.1 publish --provenance --access public` for publishing
-- Emits provenance attestations for package integrity
-- Supports OIDC Trusted Publishing (no long-lived tokens required)
+- Uses semantic-release for automated versioning based on commit messages
+- Fetches NPM token from Bitwarden Secrets Manager
+- Automatically generates changelog and GitHub releases
 
-## Prerequisites
+## How It Works
 
-### 1. Package Configuration
+1. **Conventional Commits** determine version bumps:
+   - `fix:` → patch (1.0.0 → 1.0.1)
+   - `feat:` → minor (1.0.0 → 1.1.0)
+   - `feat!:` or `BREAKING CHANGE:` → major (1.0.0 → 2.0.0)
 
-Your `package.json` already includes:
-- ✅ `repository` field matching your GitHub repo (required for provenance)
-- ✅ `publishConfig.access: public` for public publishing
+2. **semantic-release** analyzes commits since last release and:
+   - Determines next version number
+   - Generates CHANGELOG.md
+   - Publishes to npm
+   - Creates GitHub release with notes
 
-### 2. Workflow Permissions
-
-The workflow already has:
-- ✅ `permissions: id-token: write` (required for OIDC/provenance)
-- ✅ Runs on GitHub-hosted runner (`ubuntu-latest`)
+3. **BWS** securely provides the NPM token:
+   - Token stored in Bitwarden Secrets Manager
+   - Fetched at runtime via BWS CLI
+   - Never stored in GitHub secrets directly
 
 ## Setup Instructions
 
-### Step 0: First-Time Publish (Manual, One-Time)
+### Step 1: Create NPM Token
 
-**Before setting up Trusted Publishing, you must publish the package once manually.**
+1. Go to https://www.npmjs.com/settings/tokens
+2. Create an "Automation" token with publish access
+3. Copy the token
 
-npm doesn't show Trusted Publishing options until the package exists on the registry.
+### Step 2: Store Token in Bitwarden Secrets Manager
 
-**Option A: Login and publish**
+1. Go to Bitwarden Secrets Manager
+2. Create a new secret with the NPM token value
+3. Note the secret ID (UUID)
 
-```bash
-# Login to npm (prompts for username/password/OTP)
-npm login
+### Step 3: Configure GitHub Secrets
 
-# Publish the package
-bunx npm publish --access public
-```
+Add these secrets to your GitHub repository:
 
-**Option B: Use a token**
+| Secret | Description |
+|--------|-------------|
+| `BWS_ACCESS_TOKEN` | Bitwarden Secrets Manager access token |
+| `BWS_NPM_SECRET_ID` | UUID of the secret containing NPM token |
 
-```bash
-# 1. Create token at https://www.npmjs.com/settings/tokens
-# 2. Publish with token
-bunx npm publish --token <YOUR_TOKEN> --access public
-```
+### Step 4: Publishing
 
-**After first publish:**
-- Package exists on npm: https://www.npmjs.com/package/arcfetch
-- You can now configure Trusted Publishing in Step 1
-
-### Step 1: Enable Trusted Publishing (Recommended, No Tokens)
-
-1. Go to https://www.npmjs.com/settings/briansunter/access
-
-2. Click "Add a publisher" or go to:
-   https://www.npmjs.com/settings/briansunter/publishing/access-tokens
-
-3. Configure the Trusted Publisher:
-
-   | Field | Value |
-   |-------|-------|
-   | GitHub Organization / User | `briansunter` |
-   | Repository | `arcfetch` |
-   | Workflow filename | `publish.yml` |
-   | Environment name | (leave empty) |
-
-4. Save the configuration
-
-**This allows npm to authenticate via GitHub OIDC—no token needed!**
-
-### Step 2: Publishing
-
-To publish a new version:
+Simply push commits to `master` with conventional commit messages:
 
 ```bash
-# 1. Update version in package.json
-npm version patch  # or minor, or major
+# Feature (minor version bump)
+git commit -m "feat: add new export format"
 
-# 2. Commit and push
-git add package.json
-git commit -m "chore: bump version to X.Y.Z"
+# Bug fix (patch version bump)
+git commit -m "fix: correct URL parsing"
+
+# Breaking change (major version bump)
+git commit -m "feat!: remove deprecated API"
+
 git push origin master
-
-# 3. Create and push version tag
-git tag v3.0.1
-git push origin v3.0.1
 ```
 
 The GitHub Actions workflow will automatically:
 - Run lint, typecheck, and tests
-- Publish to npm with provenance
+- Fetch NPM token from BWS
+- Determine the next version from commits
+- Update CHANGELOG.md
+- Publish to npm
+- Create GitHub release
 
-### Step 3: Verify Provenance
+## Commit Message Convention
 
-After publishing, verify provenance:
-
-```bash
-npm view arcfetch versions
-npm view arcfetch --json | jq '.dist.attestations'
-```
-
-## Token Fallback (Optional)
-
-If Trusted Publishing fails or you need a fallback:
-
-1. Create an npm token: https://www.npmjs.com/settings/tokens
-2. Add `NPM_TOKEN` as a GitHub Secret in your repo
-3. Uncomment the `NODE_AUTH_TOKEN` env in the workflow:
-
-```yaml
-- name: Publish to npm
-  run: bunx npm@11.5.1 publish --provenance --access public
-  env:
-    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-```
+| Type | Description | Version Bump |
+|------|-------------|--------------|
+| `feat:` | New feature | Minor |
+| `fix:` | Bug fix | Patch |
+| `docs:` | Documentation | None |
+| `chore:` | Maintenance | None |
+| `refactor:` | Code refactoring | None |
+| `test:` | Tests | None |
+| `feat!:` | Breaking change | Major |
 
 ## Troubleshooting
 
-### "404 Not Found" or "Permission Denied" with Trusted Publishing
+### "Authentication error" from npm
 
-**Cause:** Workflow doesn't match Trusted Publisher configuration
+Check that:
+- BWS_ACCESS_TOKEN is valid
+- BWS_NPM_SECRET_ID points to correct secret
+- NPM token has publish permissions
 
-**Fix:** Ensure the workflow filename, repo, and user/org exactly match your npm Trusted Publisher settings.
+### No release created
 
-### "Missing provenance" error
+Check that commits follow conventional commit format (`feat:`, `fix:`, etc.).
 
-**Cause:** `id-token: write` permission missing
+### BWS fetch fails
 
-**Fix:** Verify the workflow has:
-```yaml
-permissions:
-  id-token: write
-```
+Verify BWS access token has read access to the secret.
 
-### Version mismatch between tag and package.json
+## Resources
 
-**Add a version guard step** before publishing:
-
-```yaml
-- name: Verify version matches tag
-  run: |
-    TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-    PACKAGE_VERSION=$(node -p "require('./package.json').version")
-    if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-      echo "Error: Tag version ($TAG_VERSION) does not match package.json ($PACKAGE_VERSION)"
-      exit 1
-    fi
-```
-
-## How It Works
-
-1. **GitHub Actions OIDC**: When the workflow runs, GitHub generates an OIDC token
-2. **npm CLI**: Uses `bunx npm@11.5.1` which supports Trusted Publishing (requires >= 11.5.1)
-3. **Provenance**: The `--provenance` flag attaches cryptographic attestations to your package
-4. **Verification**: Users can verify the package came from your GitHub repo
-
-## References
-
-- [npm Trusted Publishing](https://docs.npmjs.com/generating-provenance-statements)
-- [GitHub OIDC](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-cloud-providers)
-- [npm Provenance](https://docs.npmjs.com/generating-provenance-statements)
+- [semantic-release documentation](https://semantic-release.gitbook.io/)
+- [Bitwarden Secrets Manager](https://bitwarden.com/products/secrets-manager/)
+- [Conventional Commits](https://www.conventionalcommits.org/)

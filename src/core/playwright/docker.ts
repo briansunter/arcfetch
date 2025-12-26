@@ -52,7 +52,7 @@ export class DockerBrowserManager implements BrowserManager {
     const { stdout } = await execAsync(`
       docker run -d --rm \
         -p ${port}:3000 \
-        --name arcfetch-playwright-${port} \
+        --name archfetch-playwright-${port} \
         ${this.config.dockerImage} \
         npx -y playwright run-server --port 3000
     `.trim());

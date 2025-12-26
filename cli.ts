@@ -13,7 +13,7 @@ function showHelp(): void {
 Sofetch v3.0 - Fetch URLs and cache as clean markdown
 
 USAGE:
-    arcfetch <command> [options]
+    archfetch <command> [options]
 
 COMMANDS:
     fetch <url>       Fetch URL and save to temp folder
@@ -39,22 +39,22 @@ OPTIONS:
 
 EXAMPLES:
     # Fetch a URL (plain output for LLMs)
-    arcfetch fetch https://example.com/article
+    archfetch fetch https://example.com/article
 
     # Fetch and get just the filepath
-    arcfetch fetch https://example.com -o path
+    archfetch fetch https://example.com -o path
 
     # Fetch with human-friendly output
-    arcfetch fetch https://example.com --pretty
+    archfetch fetch https://example.com --pretty
 
     # Fetch with JSON output
-    arcfetch fetch https://example.com -o json
+    archfetch fetch https://example.com -o json
 
     # List cached references
-    arcfetch list
+    archfetch list
 
     # Promote to docs folder
-    arcfetch promote REF-001
+    archfetch promote REF-001
 
 ENVIRONMENT VARIABLES:
     SOFETCH_MIN_SCORE          Minimum quality score
@@ -63,7 +63,7 @@ ENVIRONMENT VARIABLES:
     SOFETCH_PLAYWRIGHT_MODE    Playwright mode (auto/local/docker)
 
 CONFIG FILE:
-    Place arcfetch.config.json in project root for persistent settings.
+    Place archfetch.config.json in project root for persistent settings.
 `);
 }
 
@@ -186,7 +186,7 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     if (result.usedPlaywright) {
       console.log(`**Playwright**: Yes (${result.playwrightReason})`);
     }
-    console.log(`\n💡 To promote to docs: arcfetch promote ${saveResult.refId}`);
+    console.log(`\n💡 To promote to docs: archfetch promote ${saveResult.refId}`);
   } else {
     // Plain output (LLM-friendly, default)
     console.log(`Cached: ${saveResult.refId}`);
@@ -237,8 +237,8 @@ async function commandList(output: 'text' | 'json', pretty: boolean): Promise<vo
       console.log(`   🔗 ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
       console.log('');
     }
-    console.log(`💡 To promote: arcfetch promote <ref-id>`);
-    console.log(`💡 To delete: arcfetch delete <ref-id>`);
+    console.log(`💡 To promote: archfetch promote <ref-id>`);
+    console.log(`💡 To delete: archfetch delete <ref-id>`);
   } else {
     console.log(`Cached references (${result.references.length}):\n`);
     for (const ref of result.references) {
@@ -399,7 +399,7 @@ async function main(): Promise<void> {
     switch (command) {
       case 'fetch':
         if (args.length === 0) {
-          console.error('Error: URL required. Usage: arcfetch fetch <url>');
+          console.error('Error: URL required. Usage: archfetch fetch <url>');
           process.exit(1);
         }
         await commandFetch({
@@ -421,7 +421,7 @@ async function main(): Promise<void> {
 
       case 'promote':
         if (args.length === 0) {
-          console.error('Error: Reference ID required. Usage: arcfetch promote <ref-id>');
+          console.error('Error: Reference ID required. Usage: archfetch promote <ref-id>');
           process.exit(1);
         }
         await commandPromote(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
@@ -429,7 +429,7 @@ async function main(): Promise<void> {
 
       case 'delete':
         if (args.length === 0) {
-          console.error('Error: Reference ID required. Usage: arcfetch delete <ref-id>');
+          console.error('Error: Reference ID required. Usage: archfetch delete <ref-id>');
           process.exit(1);
         }
         await commandDelete(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);

@@ -8,9 +8,9 @@ type DeepPartial<T> = {
 };
 
 const CONFIG_FILES = [
-  'arcfetch.config.json',
-  '.arcfetchrc',
-  '.arcfetchrc.json',
+  'archfetch.config.json',
+  '.archfetchrc',
+  '.archfetchrc.json',
 ];
 
 export function findConfigFile(cwd: string = process.cwd()): string | null {

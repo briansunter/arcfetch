@@ -41,7 +41,7 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
       <body>
         <article>
           <h1>E2E Test Article</h1>
-          <p>This is a comprehensive end-to-end test of the arcfetch workflow.
+          <p>This is a comprehensive end-to-end test of the archfetch workflow.
           It simulates the complete process from HTML extraction through to
           promoting the cached reference to the docs folder.</p>
           <h2>Section One</h2>

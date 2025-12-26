@@ -1,24 +1,24 @@
 ---
-name: arcfetch
-description: Use when working with @briansunter/arcfetch CLI for URL fetching, article extraction, and cache management. Triggers: fetching URLs, batch processing, managing cached references, promoting/deleting content, or integrating arcfetch into automation pipelines.
+name: archfetch
+description: Use when working with @briansunter/archfetch CLI for URL fetching, article extraction, and cache management. Triggers: fetching URLs, batch processing, managing cached references, promoting/deleting content, or integrating archfetch into automation pipelines.
 ---
 
-# arcfetch
+# archfetch
 
-Guide for using the arcfetch CLI tool to fetch web content, extract articles, and manage cached references.
+Guide for using the archfetch CLI tool to fetch web content, extract articles, and manage cached references.
 
 ## Overview
 
-arcfetch converts web pages to clean markdown with automatic JavaScript rendering fallback via Playwright when needed.
+archfetch converts web pages to clean markdown with automatic JavaScript rendering fallback via Playwright when needed.
 
 ## Installation
 
 ```bash
 # Install globally
-bun install -g @briansunter/arcfetch
+bun install -g @briansunter/archfetch
 
 # Or use via bunx
-bunx @briansunter/arcfetch <command>
+bunx @briansunter/archfetch <command>
 ```
 
 ## Commands
@@ -28,7 +28,7 @@ bunx @briansunter/arcfetch <command>
 Fetch URL and save to temp folder.
 
 ```bash
-bunx @briansunter/arcfetch fetch <url> [options]
+bunx @briansunter/archfetch fetch <url> [options]
 ```
 
 **Options:**
@@ -49,22 +49,22 @@ bunx @briansunter/arcfetch fetch <url> [options]
 
 ```bash
 # Basic fetch (plain text output for LLMs)
-bunx @briansunter/arcfetch fetch https://example.com/article
+bunx @briansunter/archfetch fetch https://example.com/article
 
 # Get just the filepath
-bunx @briansunter/arcfetch fetch https://example.com -o path
+bunx @briansunter/archfetch fetch https://example.com -o path
 
 # Human-friendly output with emojis
-bunx @briansunter/arcfetch fetch https://example.com --pretty
+bunx @briansunter/archfetch fetch https://example.com --pretty
 
 # JSON output for scripting
-bunx @briansunter/arcfetch fetch https://example.com -o json
+bunx @briansunter/archfetch fetch https://example.com -o json
 
 # With search query metadata
-bunx @briansunter/arcfetch fetch https://example.com -q "search term"
+bunx @briansunter/archfetch fetch https://example.com -q "search term"
 
 # Verbose mode to see what's happening
-bunx @briansunter/arcfetch fetch https://example.com -v
+bunx @briansunter/archfetch fetch https://example.com -v
 ```
 
 **Process:** HTTP fetch → Extract content → Quality score (0-100) → Playwright retry if score < 85
@@ -74,7 +74,7 @@ bunx @briansunter/arcfetch fetch https://example.com -v
 List all cached references.
 
 ```bash
-bunx @briansunter/arcfetch list [options]
+bunx @briansunter/archfetch list [options]
 ```
 
 **Options:**
@@ -85,13 +85,13 @@ bunx @briansunter/arcfetch list [options]
 
 ```bash
 # List references (plain text)
-bunx @briansunter/arcfetch list
+bunx @briansunter/archfetch list
 
 # Pretty output with emojis
-bunx @briansunter/arcfetch list --pretty
+bunx @briansunter/archfetch list --pretty
 
 # JSON output
-bunx @briansunter/arcfetch list -o json
+bunx @briansunter/archfetch list -o json
 ```
 
 ### promote
@@ -99,7 +99,7 @@ bunx @briansunter/arcfetch list -o json
 Move reference from temp to docs folder.
 
 ```bash
-bunx @briansunter/arcfetch promote <ref-id> [options]
+bunx @briansunter/archfetch promote <ref-id> [options]
 ```
 
 **Options:**
@@ -109,9 +109,9 @@ bunx @briansunter/arcfetch promote <ref-id> [options]
 **Examples:**
 
 ```bash
-bunx @briansunter/arcfetch promote REF-001
-bunx @briansunter/arcfetch promote REF-001 --pretty
-bunx @briansunter/arcfetch promote REF-001 -o json
+bunx @briansunter/archfetch promote REF-001
+bunx @briansunter/archfetch promote REF-001 --pretty
+bunx @briansunter/archfetch promote REF-001 -o json
 ```
 
 ### delete
@@ -119,7 +119,7 @@ bunx @briansunter/arcfetch promote REF-001 -o json
 Delete a cached reference.
 
 ```bash
-bunx @briansunter/arcfetch delete <ref-id> [options]
+bunx @briansunter/archfetch delete <ref-id> [options]
 ```
 
 **Options:**
@@ -129,8 +129,8 @@ bunx @briansunter/arcfetch delete <ref-id> [options]
 **Examples:**
 
 ```bash
-bunx @briansunter/arcfetch delete REF-001
-bunx @briansunter/arcfetch delete REF-001 --pretty
+bunx @briansunter/archfetch delete REF-001
+bunx @briansunter/archfetch delete REF-001 --pretty
 ```
 
 ### config
@@ -138,7 +138,7 @@ bunx @briansunter/arcfetch delete REF-001 --pretty
 Show current configuration.
 
 ```bash
-bunx @briansunter/arcfetch config
+bunx @briansunter/archfetch config
 ```
 
 Displays all config settings including quality thresholds, paths, and Playwright mode.
@@ -148,41 +148,41 @@ Displays all config settings including quality thresholds, paths, and Playwright
 ### Single Article
 
 ```bash
-bunx @briansunter/arcfetch fetch https://example.com/guide
+bunx @briansunter/archfetch fetch https://example.com/guide
 cat .tmp/REF-001-guide.md  # Review
-bunx @briansunter/arcfetch promote REF-001  # If good
+bunx @briansunter/archfetch promote REF-001  # If good
 ```
 
 ### Batch Fetch
 
 ```bash
 for url in "url1" "url2" "url3"; do
-  bunx @briansunter/arcfetch fetch "$url"
+  bunx @briansunter/archfetch fetch "$url"
 done
 
-bunx @briansunter/arcfetch list  # Review all
-bunx @briansunter/arcfetch promote REF-001  # Promote desired
+bunx @briansunter/archfetch list  # Review all
+bunx @briansunter/archfetch promote REF-001  # Promote desired
 ```
 
 ### Cleanup Temp References
 
 ```bash
-bunx @briansunter/arcfetch list
-bunx @briansunter/arcfetch delete REF-001  # Delete unwanted
+bunx @briansunter/archfetch list
+bunx @briansunter/archfetch delete REF-001  # Delete unwanted
 ```
 
 ### Scripting with JSON Output
 
 ```bash
 # Fetch and parse result
-RESULT=$(bunx @briansunter/arcfetch fetch https://example.com -o json)
+RESULT=$(bunx @briansunter/archfetch fetch https://example.com -o json)
 REF_ID=$(echo "$RESULT" | jq -r '.refId')
 FILEPATH=$(echo "$RESULT" | jq -r '.filepath')
 QUALITY=$(echo "$RESULT" | jq -r '.quality')
 
 # Conditional promote based on quality
 if (( QUALITY >= 85 )); then
-  bunx @briansunter/arcfetch promote "$REF_ID"
+  bunx @briansunter/archfetch promote "$REF_ID"
 fi
 ```
 
@@ -192,11 +192,11 @@ fi
 
 1. CLI arguments
 2. Environment variables
-3. `arcfetch.config.json`
-4. `.arcfetchrc`
-5. `.arcfetchrc.json`
+3. `archfetch.config.json`
+4. `.archfetchrc`
+5. `.archfetchrc.json`
 
-### Create `arcfetch.config.json`
+### Create `archfetch.config.json`
 
 ```json
 {
@@ -237,7 +237,7 @@ export SOFETCH_PLAYWRIGHT_MODE="auto"
 ## MCP Server
 
 ```bash
-bunx @briansunter/arcfetch
+bunx @briansunter/archfetch
 # Tools: fetch_url, list_cached, promote_reference, delete_cached
 ```
 
@@ -269,5 +269,5 @@ Content...
 
 ## References
 
-- Project: https://github.com/briansunter/arcfetch
+- Project: https://github.com/briansunter/archfetch
 - MCP: https://modelcontextprotocol.io
