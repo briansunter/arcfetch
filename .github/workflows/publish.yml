@@ -69,4 +69,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ steps.bws.outputs.npm_token }}
+          NODE_AUTH_TOKEN: ${{ steps.bws.outputs.npm_token }}
         run: npx semantic-release
