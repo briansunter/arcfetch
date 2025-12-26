@@ -54,18 +54,6 @@ export function loadConfigFromEnv(): DeepPartial<FetchiConfig> {
     config.paths.docsDir = process.env.SOFETCH_DOCS_DIR;
   }
 
-  if (process.env.SOFETCH_PLAYWRIGHT_MODE) {
-    const mode = process.env.SOFETCH_PLAYWRIGHT_MODE;
-    if (mode === 'local' || mode === 'docker' || mode === 'auto') {
-      config.playwright = config.playwright || {};
-      config.playwright.mode = mode;
-    }
-  }
-  if (process.env.SOFETCH_DOCKER_IMAGE) {
-    config.playwright = config.playwright || {};
-    config.playwright.dockerImage = process.env.SOFETCH_DOCKER_IMAGE;
-  }
-
   return config;
 }
 
@@ -74,7 +62,7 @@ export interface CliConfigOverrides {
   jsRetryThreshold?: number;
   tempDir?: string;
   docsDir?: string;
-  playwrightMode?: 'local' | 'docker' | 'auto';
+  waitStrategy?: 'networkidle' | 'domcontentloaded' | 'load';
   timeout?: number;
 }
 
@@ -103,13 +91,13 @@ export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig 
   if (cliOverrides.docsDir !== undefined) {
     config.paths.docsDir = cliOverrides.docsDir;
   }
-  if (cliOverrides.playwrightMode !== undefined) {
-    config.playwright.mode = cliOverrides.playwrightMode;
+  if (cliOverrides.waitStrategy !== undefined) {
+    config.playwright.waitStrategy = cliOverrides.waitStrategy;
   }
   if (cliOverrides.timeout !== undefined) {
     config.playwright.timeout = cliOverrides.timeout;
   }
-  
+
   return FetchiConfigSchema.parse(config);
 }
 

@@ -11,8 +11,6 @@ export const PathsConfigSchema = z.object({
 });
 
 export const PlaywrightConfigSchema = z.object({
-  mode: z.enum(['local', 'docker', 'auto']).default('auto'),
-  dockerImage: z.string().default('mcr.microsoft.com/playwright:v1.40.0-jammy'),
   timeout: z.number().default(30000),
   waitStrategy: z.enum(['networkidle', 'domcontentloaded', 'load']).default('networkidle'),
 });

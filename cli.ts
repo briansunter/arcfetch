@@ -35,7 +35,8 @@ OPTIONS:
     --min-quality <n>         Minimum quality score 0-100 (default: 60)
     --temp-dir <path>         Temp folder (default: .tmp)
     --docs-dir <path>         Docs folder (default: docs/ai/references)
-    --playwright <mode>       Playwright mode: auto, local, docker
+    --wait-strategy <mode>    Playwright wait strategy: networkidle, domcontentloaded, load
+    --force-playwright        Skip simple fetch and use Playwright directly
 
 EXAMPLES:
     # Fetch a URL (plain output for LLMs)
@@ -60,7 +61,6 @@ ENVIRONMENT VARIABLES:
     SOFETCH_MIN_SCORE          Minimum quality score
     SOFETCH_TEMP_DIR           Temp directory
     SOFETCH_DOCS_DIR           Docs directory
-    SOFETCH_PLAYWRIGHT_MODE    Playwright mode (auto/local/docker)
 
 CONFIG FILE:
     Place archfetch.config.json in project root for persistent settings.
@@ -80,7 +80,8 @@ interface FetchOptions {
   minQuality?: number;
   tempDir?: string;
   docsDir?: string;
-  playwrightMode?: 'auto' | 'local' | 'docker';
+  waitStrategy?: 'networkidle' | 'domcontentloaded' | 'load';
+  forcePlaywright?: boolean;
 }
 
 async function commandFetch(options: FetchOptions): Promise<void> {
@@ -88,7 +89,7 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     minQuality: options.minQuality,
     tempDir: options.tempDir,
     docsDir: options.docsDir,
-    playwrightMode: options.playwrightMode,
+    waitStrategy: options.waitStrategy,
   });
 
   if (options.verbose) {
@@ -96,7 +97,7 @@ async function commandFetch(options: FetchOptions): Promise<void> {
   }
 
   // Fetch URL
-  const result = await fetchUrl(options.url, config, options.verbose);
+  const result = await fetchUrl(options.url, config, options.verbose, options.forcePlaywright);
 
   // Close browser if it was used
   await closeBrowser();
@@ -330,7 +331,8 @@ interface ParsedOptions {
   minQuality?: number;
   tempDir?: string;
   docsDir?: string;
-  playwrightMode?: 'auto' | 'local' | 'docker';
+  waitStrategy?: 'networkidle' | 'domcontentloaded' | 'load';
+  forcePlaywright?: boolean;
 }
 
 function parseArgs(): { command: string; args: string[]; options: ParsedOptions } {
@@ -373,11 +375,13 @@ function parseArgs(): { command: string; args: string[]; options: ParsedOptions 
     } else if (arg === '--docs-dir') {
       options.docsDir = next;
       i++;
-    } else if (arg === '--playwright') {
-      if (next === 'auto' || next === 'local' || next === 'docker') {
-        options.playwrightMode = next;
+    } else if (arg === '--wait-strategy') {
+      if (next === 'networkidle' || next === 'domcontentloaded' || next === 'load') {
+        options.waitStrategy = next;
       }
       i++;
+    } else if (arg === '--force-playwright') {
+      options.forcePlaywright = true;
     } else if (arg === '-h' || arg === '--help') {
       return { command: 'help', args: [], options: { output: 'text', verbose: false, pretty: false } };
     } else if (!arg.startsWith('-')) {
@@ -411,7 +415,8 @@ async function main(): Promise<void> {
           minQuality: options.minQuality,
           tempDir: options.tempDir,
           docsDir: options.docsDir,
-          playwrightMode: options.playwrightMode,
+          waitStrategy: options.waitStrategy,
+          forcePlaywright: options.forcePlaywright,
         });
         break;
 

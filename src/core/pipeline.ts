@@ -111,8 +111,16 @@ async function tryPlaywright(
 export async function fetchUrl(
   url: string,
   config: FetchiConfig,
-  verbose = false
+  verbose = false,
+  forcePlaywright = false
 ): Promise<FetchResult> {
+  if (forcePlaywright) {
+    if (verbose) {
+      console.error(`⚡ Force Playwright mode enabled`);
+    }
+    return tryPlaywright(url, config, 'forced', verbose);
+  }
+
   const simpleResult = await simpleFetch(url, verbose);
 
   if (simpleResult.error) {

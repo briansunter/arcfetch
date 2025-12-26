@@ -1,7 +1,7 @@
 {
   "name": "archfetch",
   "version": "1.0.0",
-  "description": "Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering via Playwright/Docker.",
+  "description": "Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering via Playwright.",
   "type": "module",
   "main": "index.ts",
   "bin": {
@@ -31,13 +31,13 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "postinstall": "playwright install chromium || true"
+    "postinstall": "playwright install --with-deps chromium 2>/dev/null || true"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.6.0",
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.12",
-    "playwright": "^1.56.0",
+    "playwright": "^1.57.0",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "turndown": "^7.2.0",

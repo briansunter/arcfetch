@@ -1,7 +1,6 @@
 import type { PlaywrightConfig } from '../../config/schema.js';
 import type { BrowserManager, FetchWithBrowserResult } from './types.js';
 import { LocalBrowserManager } from './local.js';
-import { DockerBrowserManager, isDockerAvailable } from './docker.js';
 
 let currentManager: BrowserManager | null = null;
 
@@ -9,37 +8,10 @@ export async function getBrowserManager(config: PlaywrightConfig): Promise<Brows
   if (currentManager) {
     return currentManager;
   }
-  
-  const mode = config.mode;
-  
-  if (mode === 'local') {
-    currentManager = new LocalBrowserManager(config);
-    return currentManager;
-  }
-  
-  if (mode === 'docker') {
-    const dockerAvailable = await isDockerAvailable();
-    if (!dockerAvailable) {
-      throw new Error('Docker mode requested but Docker is not available');
-    }
-    currentManager = new DockerBrowserManager(config);
-    return currentManager;
-  }
-  
-  // Auto mode: prefer Docker if available, fall back to local
-  if (mode === 'auto') {
-    const dockerAvailable = await isDockerAvailable();
-    if (dockerAvailable) {
-      console.error('Using Docker for Playwright');
-      currentManager = new DockerBrowserManager(config);
-    } else {
-      console.error('Docker not available, using local Playwright');
-      currentManager = new LocalBrowserManager(config);
-    }
-    return currentManager;
-  }
-  
-  throw new Error(`Unknown Playwright mode: ${mode}`);
+
+  // Only local mode is supported
+  currentManager = new LocalBrowserManager(config);
+  return currentManager;
 }
 
 export async function fetchWithBrowser(
@@ -57,7 +29,7 @@ export async function fetchWithBrowser(
     const page = await context.newPage();
     
     if (verbose) {
-      console.error(`🎭 Playwright: Navigating to ${url} (${manager.isDocker() ? 'Docker' : 'local'})`);
+      console.error(`🎭 Playwright: Navigating to ${url}`);
     }
     
     await page.goto(url, {

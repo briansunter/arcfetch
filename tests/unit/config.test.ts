@@ -14,7 +14,8 @@ describe("FetchiConfigSchema", () => {
     expect(result.quality.jsRetryThreshold).toBe(85);
     expect(result.paths.tempDir).toBe(".tmp");
     expect(result.paths.docsDir).toBe("docs/ai/references");
-    expect(result.playwright.mode).toBe("auto");
+    expect(result.playwright.timeout).toBe(30000);
+    expect(result.playwright.waitStrategy).toBe("networkidle");
   });
 
   test("allows custom quality thresholds", () => {
@@ -33,15 +34,12 @@ describe("FetchiConfigSchema", () => {
     expect(result.paths.docsDir).toBe("docs/refs");
   });
 
-  test("validates playwright modes", () => {
-    expect(FetchiConfigSchema.parse({ playwright: { mode: "auto" } }).playwright.mode).toBe("auto");
-    expect(FetchiConfigSchema.parse({ playwright: { mode: "local" } }).playwright.mode).toBe("local");
-    expect(FetchiConfigSchema.parse({ playwright: { mode: "docker" } }).playwright.mode).toBe("docker");
-  });
-
-  test("rejects invalid playwright mode", () => {
-    const result = FetchiConfigSchema.safeParse({ playwright: { mode: "invalid" } });
-    expect(result.success).toBe(false);
+  test("allows custom playwright settings", () => {
+    const result = FetchiConfigSchema.parse({
+      playwright: { timeout: 60000, waitStrategy: "domcontentloaded" }
+    });
+    expect(result.playwright.timeout).toBe(60000);
+    expect(result.playwright.waitStrategy).toBe("domcontentloaded");
   });
 
   test("rejects quality score out of range", () => {

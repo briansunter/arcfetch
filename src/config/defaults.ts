@@ -10,8 +10,6 @@ export const DEFAULT_CONFIG: FetchiConfig = {
     docsDir: 'docs/ai/references',
   },
   playwright: {
-    mode: 'auto',
-    dockerImage: 'mcr.microsoft.com/playwright:v1.40.0-jammy',
     timeout: 30000,
     waitStrategy: 'networkidle',
   },

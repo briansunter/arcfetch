@@ -138,33 +138,13 @@ describe('config loader', () => {
       expect(result.paths?.docsDir).toBe('/my/docs');
     });
 
-    test('loads SOFETCH_PLAYWRIGHT_MODE with valid value', () => {
-      process.env.SOFETCH_PLAYWRIGHT_MODE = 'docker';
-      const result = loadConfigFromEnv();
-      expect(result.playwright?.mode).toBe('docker');
-    });
-
-    test('ignores SOFETCH_PLAYWRIGHT_MODE with invalid value', () => {
-      process.env.SOFETCH_PLAYWRIGHT_MODE = 'invalid';
-      const result = loadConfigFromEnv();
-      expect(result.playwright?.mode).toBeUndefined();
-    });
-
-    test('loads SOFETCH_DOCKER_IMAGE', () => {
-      process.env.SOFETCH_DOCKER_IMAGE = 'custom/playwright:latest';
-      const result = loadConfigFromEnv();
-      expect(result.playwright?.dockerImage).toBe('custom/playwright:latest');
-    });
-
     test('loads multiple env vars together', () => {
       process.env.SOFETCH_MIN_SCORE = '55';
       process.env.SOFETCH_TEMP_DIR = '/env/temp';
-      process.env.SOFETCH_PLAYWRIGHT_MODE = 'local';
 
       const result = loadConfigFromEnv();
       expect(result.quality?.minScore).toBe(55);
       expect(result.paths?.tempDir).toBe('/env/temp');
-      expect(result.playwright?.mode).toBe('local');
     });
   });
 
@@ -173,7 +153,8 @@ describe('config loader', () => {
       const config = loadConfig();
       expect(config.quality.minScore).toBe(DEFAULT_CONFIG.quality.minScore);
       expect(config.quality.jsRetryThreshold).toBe(DEFAULT_CONFIG.quality.jsRetryThreshold);
-      expect(config.playwright.mode).toBe(DEFAULT_CONFIG.playwright.mode);
+      expect(config.playwright.timeout).toBe(DEFAULT_CONFIG.playwright.timeout);
+      expect(config.playwright.waitStrategy).toBe(DEFAULT_CONFIG.playwright.waitStrategy);
     });
 
     test('CLI overrides take precedence', () => {
@@ -182,7 +163,6 @@ describe('config loader', () => {
         jsRetryThreshold: 95,
         tempDir: '/cli/temp',
         docsDir: '/cli/docs',
-        playwrightMode: 'docker',
         timeout: 45000,
       });
 
@@ -190,17 +170,14 @@ describe('config loader', () => {
       expect(config.quality.jsRetryThreshold).toBe(95);
       expect(config.paths.tempDir).toBe('/cli/temp');
       expect(config.paths.docsDir).toBe('/cli/docs');
-      expect(config.playwright.mode).toBe('docker');
       expect(config.playwright.timeout).toBe(45000);
     });
 
     test('env vars override defaults', () => {
       process.env.SOFETCH_MIN_SCORE = '55';
-      process.env.SOFETCH_PLAYWRIGHT_MODE = 'local';
 
       const config = loadConfig();
       expect(config.quality.minScore).toBe(55);
-      expect(config.playwright.mode).toBe('local');
     });
 
     test('CLI overrides env vars', () => {
@@ -248,10 +225,6 @@ describe('config loader', () => {
 
     test('default jsRetryThreshold is 85', () => {
       expect(DEFAULT_CONFIG.quality.jsRetryThreshold).toBe(85);
-    });
-
-    test('default playwright mode is auto', () => {
-      expect(DEFAULT_CONFIG.playwright.mode).toBe('auto');
     });
 
     test('default timeout is 30000', () => {
