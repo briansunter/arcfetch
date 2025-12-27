@@ -14,7 +14,7 @@ function showHelp(): void {
 Arcfetch v${getVersion()} - Fetch URLs and cache as clean markdown
 
 USAGE:
-    archfetch <command> [options]
+    arcfetch <command> [options]
 
 COMMANDS:
     fetch <url>       Fetch URL and save to temp folder
@@ -41,22 +41,22 @@ OPTIONS:
 
 EXAMPLES:
     # Fetch a URL (plain output for LLMs)
-    archfetch fetch https://example.com/article
+    arcfetch fetch https://example.com/article
 
     # Fetch and get just the filepath
-    archfetch fetch https://example.com -o path
+    arcfetch fetch https://example.com -o path
 
     # Fetch with human-friendly output
-    archfetch fetch https://example.com --pretty
+    arcfetch fetch https://example.com --pretty
 
     # Fetch with JSON output
-    archfetch fetch https://example.com -o json
+    arcfetch fetch https://example.com -o json
 
     # List cached references
-    archfetch list
+    arcfetch list
 
     # Promote to docs folder
-    archfetch promote REF-001
+    arcfetch promote REF-001
 
 ENVIRONMENT VARIABLES:
     SOFETCH_MIN_SCORE          Minimum quality score
@@ -64,7 +64,7 @@ ENVIRONMENT VARIABLES:
     SOFETCH_DOCS_DIR           Docs directory
 
 CONFIG FILE:
-    Place archfetch.config.json in project root for persistent settings.
+    Place arcfetch.config.json in project root for persistent settings.
 `);
 }
 

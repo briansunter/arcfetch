@@ -1,12 +1,11 @@
-# archfetch
+# arcfetch
 
-Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering fallback via Playwright (local or Docker).
+Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering fallback via Playwright.
 
 ## Features
 
 - **Smart Fetching**: Simple HTTP first, automatic Playwright fallback for JS-heavy sites
 - **Quality Gates**: Configurable quality thresholds with automatic retry
-- **Docker Support**: Auto-launches Playwright in Docker when available
 - **Clean Markdown**: Mozilla Readability + Turndown for 90-95% token reduction
 - **Temp → Docs Workflow**: Cache to temp folder, promote to docs when ready
 - **CLI & MCP**: Available as command-line tool and MCP server
@@ -14,12 +13,11 @@ Fetch URLs, extract clean article content, and cache as markdown. Supports autom
 ## Installation
 
 ```bash
-bun install
-```
+# For users
+npm install -g arcfetch
 
-For Docker Playwright support (recommended):
-```bash
-docker pull mcr.microsoft.com/playwright:v1.40.0-jammy
+# For development
+bun install
 ```
 
 ## Quick Start
@@ -28,16 +26,16 @@ docker pull mcr.microsoft.com/playwright:v1.40.0-jammy
 
 ```bash
 # Fetch a URL
-archfetch fetch https://example.com/article
+arcfetch fetch https://example.com/article
 
 # List cached references
-archfetch list
+arcfetch list
 
 # Promote to docs folder
-archfetch promote REF-001
+arcfetch promote REF-001
 
 # Delete a reference
-archfetch delete REF-001
+arcfetch delete REF-001
 ```
 
 ### MCP Server
@@ -47,9 +45,9 @@ Add to your Claude Code MCP configuration:
 ```json
 {
   "mcpServers": {
-    "archfetch": {
+    "arcfetch": {
       "command": "bun",
-      "args": ["run", "/path/to/archfetch/index.ts"]
+      "args": ["run", "/path/to/arcfetch/index.ts"]
     }
   }
 }
@@ -62,16 +60,18 @@ Add to your Claude Code MCP configuration:
 Fetch URL and save to temp folder.
 
 ```bash
-archfetch fetch <url> [options]
+arcfetch fetch <url> [options]
 
 Options:
-  -q, --query <text>      Search query (saved as metadata)
-  -o, --output <format>   Output: text, json, summary (default: text)
-  -v, --verbose           Show detailed output
-  --min-quality <n>       Minimum quality score 0-100 (default: 60)
-  --temp-dir <path>       Temp folder (default: .tmp)
-  --docs-dir <path>       Docs folder (default: docs/ai/references)
-  --playwright <mode>     Playwright mode: auto, local, docker
+  -q, --query <text>        Search query (saved as metadata)
+  -o, --output <format>     Output: text, json, summary (default: text)
+  -v, --verbose             Show detailed output
+  --pretty                  Human-friendly output with emojis
+  --min-quality <n>         Minimum quality score 0-100 (default: 60)
+  --temp-dir <path>         Temp folder (default: .tmp)
+  --docs-dir <path>         Docs folder (default: docs/ai/references)
+  --wait-strategy <mode>    Playwright wait strategy: networkidle, domcontentloaded, load
+  --force-playwright        Skip simple fetch and use Playwright directly
 ```
 
 ### list
@@ -79,7 +79,7 @@ Options:
 List all cached references.
 
 ```bash
-archfetch list [-o json]
+arcfetch list [-o json]
 ```
 
 ### promote
@@ -87,7 +87,7 @@ archfetch list [-o json]
 Move reference from temp to docs folder.
 
 ```bash
-archfetch promote <ref-id>
+arcfetch promote <ref-id>
 ```
 
 ### delete
@@ -95,7 +95,7 @@ archfetch promote <ref-id>
 Delete a cached reference.
 
 ```bash
-archfetch delete <ref-id>
+arcfetch delete <ref-id>
 ```
 
 ### config
@@ -103,7 +103,7 @@ archfetch delete <ref-id>
 Show current configuration.
 
 ```bash
-archfetch config
+arcfetch config
 ```
 
 ## MCP Tools
@@ -119,7 +119,7 @@ archfetch config
 
 ### Config File
 
-Create `archfetch.config.json` in your project root:
+Create `arcfetch.config.json` in your project root:
 
 ```json
 {
@@ -132,9 +132,8 @@ Create `archfetch.config.json` in your project root:
     "docsDir": "docs/ai/references"
   },
   "playwright": {
-    "mode": "auto",
-    "dockerImage": "mcr.microsoft.com/playwright:v1.40.0-jammy",
-    "timeout": 30000
+    "timeout": 30000,
+    "waitStrategy": "networkidle"
   }
 }
 ```
@@ -142,11 +141,9 @@ Create `archfetch.config.json` in your project root:
 ### Environment Variables
 
 ```bash
-SOFETCH_MIN_SCORE=60
-SOFETCH_TEMP_DIR=.tmp
-SOFETCH_DOCS_DIR=docs/ai/references
-SOFETCH_PLAYWRIGHT_MODE=auto
-SOFETCH_DOCKER_IMAGE=mcr.microsoft.com/playwright:v1.40.0-jammy
+ARCFETCH_MIN_SCORE=60
+ARCFETCH_TEMP_DIR=.tmp
+ARCFETCH_DOCS_DIR=docs/ai/references
 ```
 
 ## Quality Pipeline
@@ -168,13 +165,13 @@ URL → Simple Fetch → Quality Check
                                    No → Error
 ```
 
-## Playwright Modes
+## Playwright Wait Strategies
 
-| Mode | Description |
-|------|-------------|
-| `auto` | Use Docker if available, fall back to local |
-| `docker` | Docker only (fails if Docker unavailable) |
-| `local` | Local Playwright only (requires `bun install`) |
+| Strategy | Description |
+|----------|-------------|
+| `networkidle` | Wait until network is idle (slowest, most reliable) |
+| `domcontentloaded` | Wait until DOM is loaded (faster) |
+| `load` | Wait until page load event completes (fastest) |
 
 ## File Structure
 
@@ -189,23 +186,23 @@ docs/ai/references/            # Permanent docs (after promote)
 
 ## Examples
 
-### Fetch with custom quality threshold
+### Force Playwright for JS-heavy sites
 
 ```bash
-archfetch fetch https://spa-heavy-site.com --min-quality 70 --playwright docker
+arcfetch fetch https://spa-heavy-site.com --force-playwright --wait-strategy domcontentloaded
 ```
 
 ### Fetch and get JSON output
 
 ```bash
-archfetch fetch https://example.com -o json
+arcfetch fetch https://example.com -o json
 ```
 
 ### Use in scripts
 
 ```bash
 # Get just the ref ID and path
-result=$(archfetch fetch https://example.com -o summary)
+result=$(arcfetch fetch https://example.com -o summary)
 ref_id=$(echo $result | cut -d'|' -f1)
 filepath=$(echo $result | cut -d'|' -f2)
 ```

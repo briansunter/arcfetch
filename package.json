@@ -1,11 +1,11 @@
 {
-  "name": "archfetch",
+  "name": "arcfetch",
   "version": "2.0.0",
   "description": "Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering via Playwright.",
   "type": "module",
   "main": "index.ts",
   "bin": {
-    "archfetch": "cli.ts"
+    "arcfetch": "cli.ts"
   },
   "files": [
     "cli.ts",
@@ -66,7 +66,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/briansunter/archfetch.git"
+    "url": "git+https://github.com/briansunter/arcfetch.git"
   },
   "publishConfig": {
     "access": "public"
