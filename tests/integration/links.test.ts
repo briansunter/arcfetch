@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
 import { existsSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { extractLinksFromCached, listCached } from '../../src/core/cache';
+import { extractLinksFromCached } from '../../src/core/cache';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
 import type { FetchiConfig } from '../../src/config/schema';
 

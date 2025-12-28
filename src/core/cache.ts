@@ -281,8 +281,7 @@ function extractLinksFromMarkdown(content: string): ExtractedLink[] {
   const links: ExtractedLink[] = [];
   const seen = new Set<string>();
 
-  let match;
-  while ((match = linkRegex.exec(content)) !== null) {
+  for (const match of content.matchAll(linkRegex)) {
     const text = match[1];
     const href = match[2];
 
