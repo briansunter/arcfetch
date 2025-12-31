@@ -4,6 +4,7 @@ import { getVersion } from './src/utils/version';
 import { loadConfig } from './src/config/index';
 import { fetchUrl, closeBrowser } from './src/core/pipeline';
 import { saveToTemp, listCached, promoteReference, deleteCached, extractLinksFromCached } from './src/core/cache';
+import { serveMcp } from './index';
 
 // ============================================================================
 // HELP
@@ -24,6 +25,7 @@ COMMANDS:
     promote <ref-id>    Move reference from temp to docs folder
     delete <ref-id>     Delete a cached reference
     config              Show current configuration
+    mcp                 Start MCP server (for Claude Code integration)
     help                Show this help message
 
 OPTIONS:
@@ -670,6 +672,10 @@ async function main(): Promise<void> {
 
       case 'config':
         await commandConfig();
+        break;
+
+      case 'mcp':
+        await serveMcp();
         break;
 
       case 'links':

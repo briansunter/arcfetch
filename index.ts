@@ -562,13 +562,16 @@ async function handleFetchLinks(args: { refId: string; refetch?: boolean; output
   };
 }
 
-async function main() {
+export async function serveMcp() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Sofetch MCP server v3.0 running on stdio');
+  console.error(`Arcfetch MCP server v${getVersion()} running on stdio`);
 }
 
-main().catch((error) => {
-  console.error('Server error:', error);
-  process.exit(1);
-});
+// Auto-start if run directly
+if (import.meta.main) {
+  serveMcp().catch((error) => {
+    console.error('Server error:', error);
+    process.exit(1);
+  });
+}
