@@ -1,6 +1,6 @@
 {
   "name": "arcfetch",
-  "version": "0.0.1",
+  "version": "1.1.0",
   "description": "Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering via Playwright.",
   "type": "module",
   "main": "index.ts",
@@ -80,7 +80,10 @@
         "@semantic-release/commit-analyzer",
         {
           "releaseRules": [
-            { "breaking": true, "release": "minor" }
+            {
+              "breaking": true,
+              "release": "minor"
+            }
           ]
         }
       ],

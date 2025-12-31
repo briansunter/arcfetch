@@ -1,3 +1,24 @@
+# [1.1.0](https://github.com/briansunter/arcfetch/compare/v1.0.0...v1.1.0) (2025-12-31)
+
+
+### Bug Fixes
+
+* move plugin config to repo root ([4df77c1](https://github.com/briansunter/arcfetch/commit/4df77c19ccbfda52383e5345838eb35a947ad9c2))
+* remove @semantic-release/git to fix CI ([a5a208f](https://github.com/briansunter/arcfetch/commit/a5a208fb7941fe5ac4c1fb5acc91d8b5d48ffb7d))
+
+
+### Features
+
+* add MCP server configuration for bunx ([d5b27f9](https://github.com/briansunter/arcfetch/commit/d5b27f940920de27a88526a52fb2693fca10f4fe))
+* add mcp subcommand to CLI ([d5826e6](https://github.com/briansunter/arcfetch/commit/d5826e6f84678e3c72a2d542917388040403ede5))
+
+
+### Reverts
+
+* remove version capping from semantic-release ([3aab6c4](https://github.com/briansunter/arcfetch/commit/3aab6c4c311e66faa528d3f8b898a725e0204fc9))
+* restore @semantic-release/git and changelog plugins ([6c9f8fc](https://github.com/briansunter/arcfetch/commit/6c9f8fc9d3f01d29b2ba46f49fead005e56ccfbf))
+* restore @semantic-release/git plugin ([c73d5a2](https://github.com/briansunter/arcfetch/commit/c73d5a245c2859b911510f8cc4f6513910a6a590))
+
 # [2.0.0](https://github.com/briansunter/archfetch/compare/v1.0.0...v2.0.0) (2025-12-26)
 
 
