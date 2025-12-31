@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "arcfetch": {
+      "command": "bunx",
+      "args": ["arcfetch"],
+      "type": "stdio"
+    }
+  }
+}
