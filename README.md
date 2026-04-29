@@ -1,4 +1,6 @@
-![ArcFetch: fetch web pages, extract articles, get clean markdown](docs/banner.png)
+<p align="center">
+  <img src="docs/banner.png" alt="ArcFetch: fetch web pages, extract articles, get clean markdown" width="320">
+</p>
 
 # arcfetch
 
