@@ -1,3 +1,5 @@
+![ArcFetch: fetch web pages, extract articles, get clean markdown](docs/banner.png)
+
 # arcfetch
 
 [![npm version](https://badge.fury.io/js/arcfetch.svg)](https://www.npmjs.org/package/arcfetch)
@@ -230,24 +232,11 @@ SOFETCH_DOCS_DIR=docs/ai/references
 
 CLI arguments > Environment variables > Config file > Built-in defaults
 
-## Quality Pipeline
+## How It Works
 
-```
-URL → Simple Fetch → Extract → Quality Score (0-100)
-                                     │
-                  ┌──────────────────┼──────────────────┐
-                  ▼                  ▼                   ▼
-              Score >= 85        60 - 84              < 60
-                  │                  │                   │
-                  ▼                  ▼                   ▼
-                Save          Try Playwright       Try Playwright
-                              pick best score      (required)
-                                                        │
-                                                        ▼
-                                                   Score >= 60?
-                                                   Yes → Save
-                                                   No → Error
-```
+![ArcFetch pipeline: fetch URL with Playwright fallback, extract with Mozilla Readability + Turndown, run quality gates that detect boilerplate / paywalls / login walls, output clean markdown or JSON](docs/explainer.png)
+
+The pipeline runs four stages in order — fetch, extract, quality-gate, output — with a Playwright fallback when simple HTTP returns blank or low-quality content.
 
 ### Quality Scoring
 
