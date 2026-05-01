@@ -255,9 +255,9 @@ arcfetch delete unwanted-ref
 ### Environment Variables
 
 ```bash
-export SOFETCH_MIN_SCORE=60
-export SOFETCH_TEMP_DIR=".tmp/arcfetch"
-export SOFETCH_DOCS_DIR="docs/ai/references"
+export ARCFETCH_MIN_SCORE=60
+export ARCFETCH_TEMP_DIR=".tmp/arcfetch"
+export ARCFETCH_DOCS_DIR="docs/ai/references"
 ```
 
 ## Quality Scoring
@@ -320,7 +320,7 @@ Cached files use markdown with YAML frontmatter:
 ```markdown
 ---
 title: "Article Title"
-source_url: https://example.com/article
+source_url: "https://example.com/article"
 fetched_date: 2026-02-06
 type: web
 status: temporary

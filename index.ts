@@ -15,9 +15,16 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { loadConfig } from './src/config/index';
-import { deleteCached, extractLinksFromCached, listCached, promoteReference, saveToTemp } from './src/core/cache';
+import {
+  deleteCached,
+  extractLinksFromCached,
+  findByUrl,
+  listCached,
+  promoteReference,
+  saveToTemp,
+} from './src/core/cache';
 import { fetchLinksFromRef } from './src/core/fetch-links';
-import { closeBrowser, fetchUrl } from './src/core/pipeline';
+import { closeBrowser, type FetchResult, fetchUrl } from './src/core/pipeline';
 import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
 
@@ -36,20 +43,25 @@ const ListCachedArgsSchema = z.object({
 
 const PromoteReferenceArgsSchema = z.object({
   refId: z.string(),
+  tempDir: z.string().optional(),
   docsDir: z.string().optional(),
 });
 
 const RefIdArgsSchema = z.object({
   refId: z.string(),
+  tempDir: z.string().optional(),
 });
 
 const ExtractLinksArgsSchema = z.object({
   refId: z.string(),
+  tempDir: z.string().optional(),
   outputFormat: z.enum(['summary', 'json']).optional(),
 });
 
 const FetchLinksArgsSchema = z.object({
   refId: z.string(),
+  tempDir: z.string().optional(),
+  docsDir: z.string().optional(),
   refetch: z.boolean().optional(),
   outputFormat: z.enum(['summary', 'json']).optional(),
 });
@@ -74,7 +86,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: `Fetch URL, extract article content, convert to clean markdown, and save to temp folder.
 
 Features:
-- Automatic JavaScript rendering fallback (via Playwright/Docker)
+- Automatic JavaScript rendering fallback (via Playwright)
 - Quality validation with configurable thresholds
 - 90-95% token reduction vs raw HTML
 
@@ -140,6 +152,10 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
               type: 'string',
               description: 'Optional: Docs folder path (default: docs/ai/references)',
             },
+            tempDir: {
+              type: 'string',
+              description: 'Optional: Temp folder path (default: .tmp/arcfetch)',
+            },
           },
           required: ['refId'],
         },
@@ -153,6 +169,10 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
             refId: {
               type: 'string',
               description: 'Reference ID to delete (the filename slug)',
+            },
+            tempDir: {
+              type: 'string',
+              description: 'Optional: Temp folder path (default: .tmp/arcfetch)',
             },
           },
           required: ['refId'],
@@ -173,6 +193,10 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
               type: 'string',
               description: 'Output format: summary (default) or json',
               enum: ['summary', 'json'],
+            },
+            tempDir: {
+              type: 'string',
+              description: 'Optional: Temp folder path (default: .tmp/arcfetch)',
             },
           },
           required: ['refId'],
@@ -197,6 +221,14 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
               type: 'string',
               description: 'Output format: summary (default) or json',
               enum: ['summary', 'json'],
+            },
+            tempDir: {
+              type: 'string',
+              description: 'Optional: Temp folder path (default: .tmp/arcfetch)',
+            },
+            docsDir: {
+              type: 'string',
+              description: 'Optional: Docs folder path (default: docs/ai/references)',
             },
           },
           required: ['refId'],
@@ -265,9 +297,50 @@ async function handleFetchUrl(args: {
     tempDir: args.tempDir,
   });
 
-  const result = await fetchUrl(args.url, config, false);
+  if (!args.refetch) {
+    const cached = findByUrl(config, args.url);
+    if (cached) {
+      const outputFormat = args.outputFormat || 'summary';
+      if (outputFormat === 'path') {
+        return { content: [{ type: 'text', text: cached.filepath }] };
+      }
+      if (outputFormat === 'json') {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  success: true,
+                  alreadyExists: true,
+                  refId: cached.refId,
+                  filepath: cached.filepath,
+                  message: 'URL already fetched. Use refetch: true to update.',
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Already cached: ${cached.refId}\nFilepath: ${cached.filepath}\n\nUse refetch: true to update.`,
+          },
+        ],
+      };
+    }
+  }
 
-  await closeBrowser();
+  let result: FetchResult;
+  try {
+    result = await fetchUrl(args.url, config, false);
+  } finally {
+    await closeBrowser();
+  }
 
   if (!result.success) {
     const errorText =
@@ -407,8 +480,8 @@ async function handleListCached(args: { tempDir?: string }) {
   };
 }
 
-async function handlePromoteReference(args: { refId: string; docsDir?: string }) {
-  const config = loadConfig({ docsDir: args.docsDir });
+async function handlePromoteReference(args: { refId: string; tempDir?: string; docsDir?: string }) {
+  const config = loadConfig({ tempDir: args.tempDir, docsDir: args.docsDir });
   const result = promoteReference(config, args.refId);
 
   if (!result.success) {
@@ -427,8 +500,8 @@ async function handlePromoteReference(args: { refId: string; docsDir?: string })
   };
 }
 
-async function handleDeleteCached(args: { refId: string }) {
-  const config = loadConfig();
+async function handleDeleteCached(args: { refId: string; tempDir?: string }) {
+  const config = loadConfig({ tempDir: args.tempDir });
   const result = deleteCached(config, args.refId);
 
   if (!result.success) {
@@ -447,8 +520,8 @@ async function handleDeleteCached(args: { refId: string }) {
   };
 }
 
-async function handleExtractLinks(args: { refId: string; outputFormat?: 'summary' | 'json' }) {
-  const config = loadConfig();
+async function handleExtractLinks(args: { refId: string; tempDir?: string; outputFormat?: 'summary' | 'json' }) {
+  const config = loadConfig({ tempDir: args.tempDir });
   const result = extractLinksFromCached(config, args.refId);
 
   if (result.error) {
@@ -493,8 +566,14 @@ async function handleExtractLinks(args: { refId: string; outputFormat?: 'summary
   };
 }
 
-async function handleFetchLinks(args: { refId: string; refetch?: boolean; outputFormat?: 'summary' | 'json' }) {
-  const config = loadConfig();
+async function handleFetchLinks(args: {
+  refId: string;
+  tempDir?: string;
+  docsDir?: string;
+  refetch?: boolean;
+  outputFormat?: 'summary' | 'json';
+}) {
+  const config = loadConfig({ tempDir: args.tempDir, docsDir: args.docsDir });
   const { results, summary, error } = await fetchLinksFromRef(config, args.refId, { refetch: args.refetch });
 
   if (error) {

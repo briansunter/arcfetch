@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { existsSync, rmSync } from 'node:fs';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
-import type { FetchiConfig } from '../../src/config/schema.js';
+import type { ArcfetchConfig } from '../../src/config/schema.js';
 import { saveToTemp } from '../../src/core/cache';
 import type { FetchResult } from '../../src/core/pipeline';
 
@@ -29,7 +29,7 @@ const { fetchLinksFromRef } = await import('../../src/core/fetch-links');
 const TEST_DIR = '.test-fetch-links-cache';
 const TEST_DOCS = '.test-fetch-links-docs';
 
-function getTestConfig(): FetchiConfig {
+function getTestConfig(): ArcfetchConfig {
   return {
     ...DEFAULT_CONFIG,
     paths: {
@@ -43,7 +43,7 @@ function getTestConfig(): FetchiConfig {
  * Helper: create a cached reference using the real saveToTemp function,
  * which properly invalidates the in-memory cache index.
  */
-async function createCachedRef(config: FetchiConfig, title: string, url: string, body: string): Promise<string> {
+async function createCachedRef(config: ArcfetchConfig, title: string, url: string, body: string): Promise<string> {
   const result = await saveToTemp(config, title, url, body);
   if (result.error) {
     throw new Error(`Failed to create cached ref: ${result.error}`);
@@ -319,6 +319,21 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       const result = await fetchLinksFromRef(config, refId);
 
       expect(result.results.length).toBe(1);
+    });
+
+    test('closeBrowser is called when onProgress throws', async () => {
+      const config = getTestConfig();
+      const refId = await createCachedRef(config, 'Progress Throws', 'https://source.com', '[Link](https://link.com)');
+
+      await expect(
+        fetchLinksFromRef(config, refId, {
+          onProgress: () => {
+            throw new Error('progress callback failed');
+          },
+        })
+      ).rejects.toThrow('progress callback failed');
+
+      expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
-import type { FetchiConfig } from '../../src/config/schema';
+import type { ArcfetchConfig } from '../../src/config/schema';
 import { deleteCached, findCached, listCached, promoteReference, saveToTemp } from '../../src/core/cache';
 import { processHtmlToMarkdown } from '../../src/core/extractor';
 import { validateMarkdown } from '../../src/utils/markdown-validator';
@@ -9,7 +9,7 @@ import { validateMarkdown } from '../../src/utils/markdown-validator';
 const TEST_TEMP_DIR = '.test-e2e-temp';
 const TEST_DOCS_DIR = '.test-e2e-docs';
 
-function getTestConfig(): FetchiConfig {
+function getTestConfig(): ArcfetchConfig {
   return {
     ...DEFAULT_CONFIG,
     paths: {
@@ -84,7 +84,7 @@ describe('E2E: Complete Fetch and Cache Flow', () => {
     // Step 4: Verify saved file content
     const savedContent = readFileSync(saveResult.filepath, 'utf-8');
     expect(savedContent).toContain('title: "E2E Test Article"');
-    expect(savedContent).toContain('source_url: https://example.com/e2e-test');
+    expect(savedContent).toContain('source_url: "https://example.com/e2e-test"');
     expect(savedContent).toContain('status: temporary');
     expect(savedContent).toContain('query: "e2e test query"');
 

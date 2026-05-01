@@ -36,23 +36,25 @@ Perfect for AI workflows, research, and documentation. Fetches URLs, extracts ar
 
 ## Quick Start
 
-### No Installation Required (npx/bunx)
+### No Installation Required
 
 ```bash
 # Fetch and display markdown
-npx arcfetch fetch https://example.com/article
+bunx arcfetch fetch https://example.com/article
 
 # Get just the filepath (for scripts)
-npx arcfetch fetch https://example.com -o path
+bunx arcfetch fetch https://example.com -o path
 
 # With pretty output
 bunx arcfetch fetch https://example.com --pretty
 ```
 
+arcfetch is a Bun-based executable. `npx arcfetch` also works when `bun` is installed on `PATH`.
+
 ### Global Installation
 
 ```bash
-npm install -g arcfetch
+bun add --global arcfetch
 
 # Then use directly
 arcfetch fetch https://example.com/article
@@ -143,7 +145,7 @@ arcfetch fetch https://example.com -v
 
 ## MCP Server
 
-### Installation (Recommended: npx/bunx)
+### Installation (Recommended: bunx)
 
 Add to your Claude Code MCP configuration:
 
@@ -151,20 +153,20 @@ Add to your Claude Code MCP configuration:
 {
   "mcpServers": {
     "arcfetch": {
-      "command": "npx",
+      "command": "bunx",
       "args": ["arcfetch"]
     }
   }
 }
 ```
 
-Or using bunx (faster):
+Or using `npx` when `bun` is installed on `PATH`:
 
 ```json
 {
   "mcpServers": {
     "arcfetch": {
-      "command": "bunx",
+      "command": "npx",
       "args": ["arcfetch"]
     }
   }
@@ -191,10 +193,10 @@ Or using bunx (faster):
 |------|------------|-------------|
 | `fetch_url` | `url`, `query?`, `minQuality?`, `refetch?`, `outputFormat?` | Fetch URL with auto JS fallback |
 | `list_cached` | `tempDir?` | List all cached references |
-| `promote_reference` | `refId`, `docsDir?` | Move from temp to docs folder |
-| `delete_cached` | `refId` | Delete a cached reference |
-| `extract_links` | `refId`, `outputFormat?` | Extract links from a cached reference |
-| `fetch_links` | `refId`, `refetch?`, `outputFormat?` | Fetch all links from a cached reference |
+| `promote_reference` | `refId`, `tempDir?`, `docsDir?` | Move from temp to docs folder |
+| `delete_cached` | `refId`, `tempDir?` | Delete a cached reference |
+| `extract_links` | `refId`, `tempDir?`, `outputFormat?` | Extract links from a cached reference |
+| `fetch_links` | `refId`, `tempDir?`, `docsDir?`, `refetch?`, `outputFormat?` | Fetch all links from a cached reference |
 
 ## Configuration
 
@@ -224,11 +226,13 @@ Config files checked (in order): `arcfetch.config.json`, `.arcfetchrc`, `.arcfet
 ### Environment Variables
 
 ```bash
-SOFETCH_MIN_SCORE=60
-SOFETCH_JS_RETRY_THRESHOLD=85
-SOFETCH_TEMP_DIR=.tmp/arcfetch
-SOFETCH_DOCS_DIR=docs/ai/references
+ARCFETCH_MIN_SCORE=60
+ARCFETCH_JS_RETRY_THRESHOLD=85
+ARCFETCH_TEMP_DIR=.tmp/arcfetch
+ARCFETCH_DOCS_DIR=docs/ai/references
 ```
+
+Legacy `SOFETCH_*` names are still supported for existing setups.
 
 ### Priority Order
 
@@ -285,7 +289,7 @@ Cached files use markdown with YAML frontmatter:
 ```markdown
 ---
 title: "Article Title"
-source_url: https://example.com/article
+source_url: "https://example.com/article"
 fetched_date: 2026-02-06
 type: web
 status: temporary
@@ -415,7 +419,7 @@ arcfetch fetch https://example.com --force-playwright --wait-strategy domcontent
 git clone https://github.com/briansunter/arcfetch.git
 cd arcfetch
 bun install
-bun test          # Run tests (199 tests)
+bun test          # Run tests
 bun run typecheck # Type checking
 bun run check     # Lint + format check
 ```

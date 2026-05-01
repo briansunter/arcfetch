@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { getErrorMessage } from '../utils/error';
 import { DEFAULT_CONFIG } from './defaults';
-import { type FetchiConfig, FetchiConfigSchema } from './schema';
+import { type ArcfetchConfig, ArcfetchConfigSchema } from './schema';
 
 type DeepPartial<T> = {
   [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
@@ -21,7 +21,7 @@ export function findConfigFile(cwd: string = process.cwd()): string | null {
   return null;
 }
 
-export function loadConfigFromFile(path: string): Partial<FetchiConfig> {
+export function loadConfigFromFile(path: string): Partial<ArcfetchConfig> {
   try {
     const content = readFileSync(path, 'utf-8');
     return JSON.parse(content);
@@ -31,25 +31,39 @@ export function loadConfigFromFile(path: string): Partial<FetchiConfig> {
   }
 }
 
-export function loadConfigFromEnv(): DeepPartial<FetchiConfig> {
-  const config: DeepPartial<FetchiConfig> = {};
+function getEnv(primaryName: string, legacyName: string): string | undefined {
+  return process.env[primaryName] ?? process.env[legacyName];
+}
 
-  if (process.env.SOFETCH_MIN_SCORE) {
+function parseEnvInt(value: string): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : Number.NaN;
+}
+
+export function loadConfigFromEnv(): DeepPartial<ArcfetchConfig> {
+  const config: DeepPartial<ArcfetchConfig> = {};
+
+  const minScore = getEnv('ARCFETCH_MIN_SCORE', 'SOFETCH_MIN_SCORE');
+  const jsRetryThreshold = getEnv('ARCFETCH_JS_RETRY_THRESHOLD', 'SOFETCH_JS_RETRY_THRESHOLD');
+  const tempDir = getEnv('ARCFETCH_TEMP_DIR', 'SOFETCH_TEMP_DIR');
+  const docsDir = getEnv('ARCFETCH_DOCS_DIR', 'SOFETCH_DOCS_DIR');
+
+  if (minScore) {
     config.quality = config.quality || {};
-    config.quality.minScore = parseInt(process.env.SOFETCH_MIN_SCORE, 10);
+    config.quality.minScore = parseEnvInt(minScore);
   }
-  if (process.env.SOFETCH_JS_RETRY_THRESHOLD) {
+  if (jsRetryThreshold) {
     config.quality = config.quality || {};
-    config.quality.jsRetryThreshold = parseInt(process.env.SOFETCH_JS_RETRY_THRESHOLD, 10);
+    config.quality.jsRetryThreshold = parseEnvInt(jsRetryThreshold);
   }
 
-  if (process.env.SOFETCH_TEMP_DIR) {
+  if (tempDir) {
     config.paths = config.paths || {};
-    config.paths.tempDir = process.env.SOFETCH_TEMP_DIR;
+    config.paths.tempDir = tempDir;
   }
-  if (process.env.SOFETCH_DOCS_DIR) {
+  if (docsDir) {
     config.paths = config.paths || {};
-    config.paths.docsDir = process.env.SOFETCH_DOCS_DIR;
+    config.paths.docsDir = docsDir;
   }
 
   return config;
@@ -64,9 +78,9 @@ export interface CliConfigOverrides {
   timeout?: number;
 }
 
-export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig {
+export function loadConfig(cliOverrides: CliConfigOverrides = {}): ArcfetchConfig {
   // Deep copy to avoid mutating DEFAULT_CONFIG
-  let config: FetchiConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  let config: ArcfetchConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
   const configFile = findConfigFile();
   if (configFile) {
@@ -97,7 +111,7 @@ export function loadConfig(cliOverrides: CliConfigOverrides = {}): FetchiConfig 
   }
 
   try {
-    return FetchiConfigSchema.parse(config);
+    return ArcfetchConfigSchema.parse(config);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issues = error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');

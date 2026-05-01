@@ -44,6 +44,10 @@ function sanitizeMarkdown(markdown: string): string {
   return sanitized;
 }
 
+function sanitizeMetadataLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim();
+}
+
 export async function processHtmlToMarkdown(html: string, url: string, verbose = false): Promise<ExtractionResult> {
   try {
     if (verbose) {
@@ -78,15 +82,16 @@ export async function processHtmlToMarkdown(html: string, url: string, verbose =
     markdown = sanitizeMarkdown(markdown);
     markdown = cleanMarkdownComplete(markdown);
 
-    let header = `# ${article.title}\n\n`;
-    if (article.byline) header += `**By:** ${article.byline}\n\n`;
-    if (article.siteName) header += `**Source:** ${article.siteName}\n\n`;
-    if (article.excerpt) header += `**Summary:** ${article.excerpt}\n\n`;
-    header += `**URL:** ${url}\n\n---\n\n`;
+    const title = sanitizeMetadataLine(article.title ?? 'Untitled');
+    let header = `# ${title}\n\n`;
+    if (article.byline) header += `**By:** ${sanitizeMetadataLine(article.byline)}\n\n`;
+    if (article.siteName) header += `**Source:** ${sanitizeMetadataLine(article.siteName)}\n\n`;
+    if (article.excerpt) header += `**Summary:** ${sanitizeMetadataLine(article.excerpt)}\n\n`;
+    header += `**URL:** ${sanitizeMetadataLine(url)}\n\n---\n\n`;
 
     return {
       markdown: header + markdown,
-      title: article.title ?? undefined,
+      title,
       byline: article.byline ?? undefined,
       excerpt: article.excerpt ?? undefined,
       siteName: article.siteName ?? undefined,

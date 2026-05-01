@@ -1,6 +1,6 @@
-import type { FetchiConfig } from './schema';
+import type { ArcfetchConfig } from './schema';
 
-export const DEFAULT_CONFIG: FetchiConfig = {
+export const DEFAULT_CONFIG: ArcfetchConfig = {
   quality: {
     minScore: 60,
     jsRetryThreshold: 85,

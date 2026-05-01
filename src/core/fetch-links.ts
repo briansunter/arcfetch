@@ -1,4 +1,4 @@
-import type { FetchiConfig } from '../config/schema';
+import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { extractLinksFromCached, saveToTemp } from './cache';
 import { closeBrowser, fetchUrl } from './pipeline';
@@ -19,7 +19,7 @@ export interface FetchLinksFromRefResult {
 const MAX_LINKS = 200;
 
 export async function fetchLinksFromRef(
-  config: FetchiConfig,
+  config: ArcfetchConfig,
   refId: string,
   options?: { refetch?: boolean; verbose?: boolean; onProgress?: (result: FetchLinkResult) => void }
 ): Promise<FetchLinksFromRefResult> {
@@ -49,44 +49,46 @@ export async function fetchLinksFromRef(
   const verbose = options?.verbose ?? false;
   const refetch = options?.refetch ?? false;
 
-  for (let i = 0; i < urls.length; i += concurrency) {
-    const batch = urls.slice(i, i + concurrency);
-    const batchPromises = batch.map(async (url): Promise<FetchLinkResult> => {
-      try {
-        const fetchResult = await fetchUrl(url, config, verbose);
+  try {
+    for (let i = 0; i < urls.length; i += concurrency) {
+      const batch = urls.slice(i, i + concurrency);
+      const batchPromises = batch.map(async (url): Promise<FetchLinkResult> => {
+        try {
+          const fetchResult = await fetchUrl(url, config, verbose);
 
-        if (!fetchResult.success) {
-          return { url, status: 'failed', error: fetchResult.error };
+          if (!fetchResult.success) {
+            return { url, status: 'failed', error: fetchResult.error };
+          }
+
+          const saveResult = await saveToTemp(config, fetchResult.title, url, fetchResult.markdown, undefined, refetch);
+
+          if (saveResult.error) {
+            return { url, status: 'failed', error: saveResult.error };
+          }
+
+          if (saveResult.alreadyExists) {
+            return { url, status: 'cached', refId: saveResult.refId };
+          }
+
+          return { url, status: 'new', refId: saveResult.refId };
+        } catch (error) {
+          const message = getErrorMessage(error);
+          return { url, status: 'failed', error: message };
         }
+      });
 
-        const saveResult = await saveToTemp(config, fetchResult.title, url, fetchResult.markdown, undefined, refetch);
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
 
-        if (saveResult.error) {
-          return { url, status: 'failed', error: saveResult.error };
+      if (options?.onProgress) {
+        for (const r of batchResults) {
+          options.onProgress(r);
         }
-
-        if (saveResult.alreadyExists) {
-          return { url, status: 'cached', refId: saveResult.refId };
-        }
-
-        return { url, status: 'new', refId: saveResult.refId };
-      } catch (error) {
-        const message = getErrorMessage(error);
-        return { url, status: 'failed', error: message };
-      }
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-
-    if (options?.onProgress) {
-      for (const r of batchResults) {
-        options.onProgress(r);
       }
     }
+  } finally {
+    await closeBrowser();
   }
-
-  await closeBrowser();
 
   const summary = {
     new: results.filter((r) => r.status === 'new').length,

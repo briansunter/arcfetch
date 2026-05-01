@@ -1,5 +1,6 @@
 import type { PlaywrightConfig } from '../../config/schema';
 import { getErrorMessage } from '../../utils/error';
+import { assertSafePublicUrl } from '../../utils/url-safety';
 import { LocalBrowserManager } from './local';
 import type { BrowserManager, FetchWithBrowserResult } from './types';
 
@@ -50,6 +51,35 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
       }
     );
   });
+}
+
+const browserRequestSafetyCache = new Map<string, Promise<boolean>>();
+
+async function isSafeBrowserRequestUrl(url: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+
+  if (['about:', 'blob:', 'data:'].includes(parsed.protocol)) {
+    return true;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+
+  const cacheKey = parsed.origin;
+  const cached = browserRequestSafetyCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const safetyPromise = assertSafePublicUrl(parsed.toString()).then((result) => result.safe);
+  browserRequestSafetyCache.set(cacheKey, safetyPromise);
+  return safetyPromise;
 }
 
 export async function fetchWithBrowser(
@@ -115,6 +145,15 @@ async function doFetchWithBrowser(
   const page = await context.newPage();
 
   try {
+    await page.route('**/*', async (route) => {
+      if (await isSafeBrowserRequestUrl(route.request().url())) {
+        await route.continue();
+        return;
+      }
+
+      await route.abort('blockedbyclient');
+    });
+
     // Override navigator properties that leak headless signals
     await page.addInitScript(`
       Object.defineProperty(navigator, 'webdriver', { get: () => false });

@@ -81,10 +81,11 @@ Schema defined with Zod in `schema.ts`. Key settings:
 - `paths.docsDir` (default: `docs/ai/references`) - Permanent docs directory
 
 Environment variables:
-- `SOFETCH_MIN_SCORE` - Override minimum quality score
-- `SOFETCH_JS_RETRY_THRESHOLD` - Override JS retry threshold
-- `SOFETCH_TEMP_DIR` - Override temp directory
-- `SOFETCH_DOCS_DIR` - Override docs directory
+- `ARCFETCH_MIN_SCORE` - Override minimum quality score
+- `ARCFETCH_JS_RETRY_THRESHOLD` - Override JS retry threshold
+- `ARCFETCH_TEMP_DIR` - Override temp directory
+- `ARCFETCH_DOCS_DIR` - Override docs directory
+- Legacy `SOFETCH_*` names are still supported
 
 ### Utilities (`src/utils/`)
 - `markdown-validator.ts` - Quality scoring based on leftover HTML tags, content length, ratio analysis

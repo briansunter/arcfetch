@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
-import type { FetchiConfig } from '../../src/config/schema.js';
+import type { ArcfetchConfig } from '../../src/config/schema.js';
 import {
   deleteCached,
   extractLinksFromCached,
@@ -16,7 +16,7 @@ import {
 const TEST_DIR = '.test-cache';
 const TEST_DOCS = '.test-docs';
 
-function getTestConfig(): FetchiConfig {
+function getTestConfig(): ArcfetchConfig {
   return {
     ...DEFAULT_CONFIG,
     paths: {
@@ -65,6 +65,22 @@ describe('cache operations', () => {
       expect(result2.refId).toBe('article-two');
     });
 
+    test('creates unique filenames for different URLs with the same title', async () => {
+      const config = getTestConfig();
+
+      const result1 = await saveToTemp(config, 'Same Title', 'https://a.com', 'content a');
+      const result2 = await saveToTemp(config, 'Same Title', 'https://b.com', 'content b');
+
+      expect(result1.refId).toBe('same-title');
+      expect(result2.refId).toBe('same-title-2');
+      expect(result2.filepath).not.toBe(result1.filepath);
+
+      const firstContent = readFileSync(result1.filepath, 'utf-8');
+      const secondContent = readFileSync(result2.filepath, 'utf-8');
+      expect(firstContent).toContain('content a');
+      expect(secondContent).toContain('content b');
+    });
+
     test('returns existing reference if URL already cached', async () => {
       const config = getTestConfig();
 
@@ -82,6 +98,7 @@ describe('cache operations', () => {
       const result2 = await saveToTemp(config, 'Updated', 'https://example.com', 'new content', undefined, true);
 
       expect(result2.alreadyExists).toBeUndefined();
+      expect(result2.refId).toBe(result1.refId);
       expect(result2.filepath).toBe(result1.filepath); // Same path
     });
   });
@@ -156,6 +173,20 @@ describe('cache operations', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
+
+    test('does not overwrite an existing docs file when promoting', async () => {
+      const config = getTestConfig();
+      mkdirSync(TEST_DOCS, { recursive: true });
+      writeFileSync(join(TEST_DOCS, 'test-article.md'), 'existing docs content', 'utf-8');
+      await saveToTemp(config, 'Test Article', 'https://example.com', 'new content');
+
+      const result = promoteReference(config, 'test-article');
+
+      expect(result.success).toBe(true);
+      expect(result.toPath.endsWith('test-article-2.md')).toBe(true);
+      expect(readFileSync(join(TEST_DOCS, 'test-article.md'), 'utf-8')).toBe('existing docs content');
+      expect(readFileSync(result.toPath, 'utf-8')).toContain('new content');
+    });
   });
 
   describe('deleteCached', () => {
@@ -196,6 +227,27 @@ Also see [Docs](http://docs.example.com) for more info.`;
         { text: 'Google', href: 'https://google.com' },
         { text: 'GitHub', href: 'https://github.com' },
         { text: 'Docs', href: 'http://docs.example.com' },
+      ]);
+    });
+
+    test('extracts links with titles and parentheses while ignoring images', async () => {
+      const config = getTestConfig();
+      const content = `# Article
+
+[With title](https://example.com/page "Example")
+[With parens](https://example.com/a_(b))
+![Image](https://example.com/image.png)
+[Angle](<https://example.com/angle?q=(x)>)
+`;
+
+      await saveToTemp(config, 'Complex Link Article', 'https://example.com', content);
+
+      const result = extractLinksFromCached(config, 'complex-link-article');
+
+      expect(result.links).toEqual([
+        { text: 'With title', href: 'https://example.com/page' },
+        { text: 'With parens', href: 'https://example.com/a_(b)' },
+        { text: 'Angle', href: 'https://example.com/angle?q=(x)' },
       ]);
     });
 
@@ -256,13 +308,37 @@ Just plain text without any links.`;
   });
 
   describe('error paths', () => {
-    test('saveToTemp with title that produces empty slug', async () => {
+    test('saveToTemp with title that produces empty slug uses fallback ref ID', async () => {
       const config = getTestConfig();
       // Title with only special characters produces empty slug
       const result = await saveToTemp(config, '!!!@@@###', 'https://example.com', '# Content');
 
-      // Should still save (slug becomes empty string, but filename is .md)
       expect(result.error).toBeUndefined();
+      expect(result.refId).toBe('untitled');
+      expect(result.filepath.endsWith('untitled.md')).toBe(true);
+    });
+
+    test('listCached unescapes quoted YAML frontmatter values', () => {
+      const config = getTestConfig();
+      mkdirSync(TEST_DIR, { recursive: true });
+
+      writeFileSync(
+        join(TEST_DIR, 'quoted.md'),
+        `---
+title: "A \\"Quoted\\" Title"
+source_url: "https://example.com/path?x=1"
+fetched_date: 2026-02-06
+type: web
+status: temporary
+---
+
+Content`,
+        'utf-8'
+      );
+
+      const result = listCached(config);
+      expect(result.references[0].title).toBe('A "Quoted" Title');
+      expect(result.references[0].url).toBe('https://example.com/path?x=1');
     });
 
     test('saveToTemp sanitizes URLs with newlines to prevent YAML injection', async () => {

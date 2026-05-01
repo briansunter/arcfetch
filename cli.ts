@@ -2,9 +2,16 @@
 
 import { serveMcp } from './index';
 import { loadConfig } from './src/config/index';
-import { deleteCached, extractLinksFromCached, listCached, promoteReference, saveToTemp } from './src/core/cache';
+import {
+  deleteCached,
+  extractLinksFromCached,
+  findByUrl,
+  listCached,
+  promoteReference,
+  saveToTemp,
+} from './src/core/cache';
 import { type FetchLinkResult, fetchLinksFromRef } from './src/core/fetch-links';
-import { closeBrowser, fetchUrl } from './src/core/pipeline';
+import { closeBrowser, type FetchResult, fetchUrl } from './src/core/pipeline';
 import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
 
@@ -72,9 +79,12 @@ EXAMPLES:
     arcfetch fetch-links my-article --pretty
 
 ENVIRONMENT VARIABLES:
-    SOFETCH_MIN_SCORE          Minimum quality score
-    SOFETCH_TEMP_DIR           Temp directory
-    SOFETCH_DOCS_DIR           Docs directory
+    ARCFETCH_MIN_SCORE          Minimum quality score
+    ARCFETCH_JS_RETRY_THRESHOLD JavaScript retry threshold
+    ARCFETCH_TEMP_DIR           Temp directory
+    ARCFETCH_DOCS_DIR           Docs directory
+
+    Legacy SOFETCH_* names are still supported.
 
 CONFIG FILE:
     Place arcfetch.config.json in project root for persistent settings.
@@ -99,6 +109,41 @@ interface FetchOptions {
   forcePlaywright?: boolean;
 }
 
+function outputAlreadyCached(
+  refId: string,
+  filepath: string,
+  output: 'text' | 'json' | 'summary' | 'path',
+  pretty: boolean
+): void {
+  if (output === 'json') {
+    console.log(
+      JSON.stringify(
+        {
+          success: true,
+          alreadyExists: true,
+          refId,
+          filepath,
+          message: 'URL already fetched. Use --refetch to update.',
+        },
+        null,
+        2
+      )
+    );
+  } else if (output === 'path') {
+    console.log(filepath);
+  } else if (output === 'summary') {
+    console.log(`${refId}|${filepath}`);
+  } else if (pretty) {
+    console.log(`📦 Already cached: ${refId}`);
+    console.log(`   File: ${filepath}`);
+    console.log(`\n💡 Use --refetch to update`);
+  } else {
+    console.log(`Already cached: ${refId}`);
+    console.log(`Filepath: ${filepath}`);
+    console.log(`Use --refetch to update`);
+  }
+}
+
 async function commandFetch(options: FetchOptions): Promise<void> {
   const config = loadConfig({
     minQuality: options.minQuality,
@@ -111,11 +156,22 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     console.error('🔧 Config:', JSON.stringify(config, null, 2));
   }
 
-  // Fetch URL
-  const result = await fetchUrl(options.url, config, options.verbose, options.forcePlaywright);
+  if (!options.refetch) {
+    const cached = findByUrl(config, options.url);
+    if (cached) {
+      outputAlreadyCached(cached.refId, cached.filepath, options.output, options.pretty);
+      return;
+    }
+  }
 
-  // Close browser if it was used
-  await closeBrowser();
+  // Fetch URL
+  let result: FetchResult;
+  try {
+    result = await fetchUrl(options.url, config, options.verbose, options.forcePlaywright);
+  } finally {
+    // Close browser if it was used
+    await closeBrowser();
+  }
 
   if (!result.success) {
     if (options.output === 'json') {
@@ -167,31 +223,7 @@ async function commandFetch(options: FetchOptions): Promise<void> {
 
   // Handle already exists case
   if (saveResult.alreadyExists) {
-    if (options.output === 'json') {
-      console.log(
-        JSON.stringify(
-          {
-            success: true,
-            alreadyExists: true,
-            refId: saveResult.refId,
-            filepath: saveResult.filepath,
-            message: 'URL already fetched. Use --refetch to update.',
-          },
-          null,
-          2
-        )
-      );
-    } else if (options.output === 'path') {
-      console.log(saveResult.filepath);
-    } else if (options.pretty) {
-      console.log(`📦 Already cached: ${saveResult.refId}`);
-      console.log(`   File: ${saveResult.filepath}`);
-      console.log(`\n💡 Use --refetch to update`);
-    } else {
-      console.log(`Already cached: ${saveResult.refId}`);
-      console.log(`Filepath: ${saveResult.filepath}`);
-      console.log(`Use --refetch to update`);
-    }
+    outputAlreadyCached(saveResult.refId, saveResult.filepath, options.output, options.pretty);
     return;
   }
 
@@ -263,8 +295,12 @@ async function commandFetch(options: FetchOptions): Promise<void> {
 // LIST COMMAND
 // ============================================================================
 
-async function commandList(output: 'text' | 'json', pretty: boolean): Promise<void> {
-  const config = loadConfig();
+async function commandList(
+  output: 'text' | 'json',
+  pretty: boolean,
+  options: Pick<ParsedOptions, 'tempDir'>
+): Promise<void> {
+  const config = loadConfig({ tempDir: options.tempDir });
   const result = listCached(config);
 
   if (result.error) {
@@ -307,8 +343,13 @@ async function commandList(output: 'text' | 'json', pretty: boolean): Promise<vo
 // PROMOTE COMMAND
 // ============================================================================
 
-async function commandPromote(refId: string, output: 'text' | 'json', pretty: boolean): Promise<void> {
-  const config = loadConfig();
+async function commandPromote(
+  refId: string,
+  output: 'text' | 'json',
+  pretty: boolean,
+  options: Pick<ParsedOptions, 'tempDir' | 'docsDir'>
+): Promise<void> {
+  const config = loadConfig({ tempDir: options.tempDir, docsDir: options.docsDir });
   const result = promoteReference(config, refId);
 
   if (output === 'json') {
@@ -337,8 +378,13 @@ async function commandPromote(refId: string, output: 'text' | 'json', pretty: bo
 // DELETE COMMAND
 // ============================================================================
 
-async function commandDelete(refId: string, output: 'text' | 'json', pretty: boolean): Promise<void> {
-  const config = loadConfig();
+async function commandDelete(
+  refId: string,
+  output: 'text' | 'json',
+  pretty: boolean,
+  options: Pick<ParsedOptions, 'tempDir'>
+): Promise<void> {
+  const config = loadConfig({ tempDir: options.tempDir });
   const result = deleteCached(config, refId);
 
   if (output === 'json') {
@@ -365,8 +411,15 @@ async function commandDelete(refId: string, output: 'text' | 'json', pretty: boo
 // CONFIG COMMAND
 // ============================================================================
 
-async function commandConfig(): Promise<void> {
-  const config = loadConfig();
+async function commandConfig(
+  options: Pick<ParsedOptions, 'tempDir' | 'docsDir' | 'minQuality' | 'waitStrategy'>
+): Promise<void> {
+  const config = loadConfig({
+    minQuality: options.minQuality,
+    tempDir: options.tempDir,
+    docsDir: options.docsDir,
+    waitStrategy: options.waitStrategy,
+  });
   console.log('Current configuration:\n');
   console.log(JSON.stringify(config, null, 2));
 }
@@ -375,8 +428,13 @@ async function commandConfig(): Promise<void> {
 // LINKS COMMAND
 // ============================================================================
 
-async function commandLinks(refId: string, output: 'text' | 'json', pretty: boolean): Promise<void> {
-  const config = loadConfig();
+async function commandLinks(
+  refId: string,
+  output: 'text' | 'json',
+  pretty: boolean,
+  options: Pick<ParsedOptions, 'tempDir'>
+): Promise<void> {
+  const config = loadConfig({ tempDir: options.tempDir });
   const result = extractLinksFromCached(config, refId);
 
   if (result.error) {
@@ -437,9 +495,10 @@ async function commandFetchLinks(
   output: 'text' | 'json',
   pretty: boolean,
   verbose: boolean,
-  refetch: boolean
+  refetch: boolean,
+  options: Pick<ParsedOptions, 'tempDir' | 'docsDir'>
 ): Promise<void> {
-  const config = loadConfig();
+  const config = loadConfig({ tempDir: options.tempDir, docsDir: options.docsDir });
 
   const printProgress =
     output !== 'json'
@@ -575,9 +634,9 @@ export function parseArgs(): { command: string; args: string[]; options: ParsedO
       options.pretty = true;
     } else if (arg === '--min-quality') {
       const raw = requiresValue(arg, next);
-      const val = parseInt(raw, 10);
-      if (Number.isNaN(val)) {
-        console.error('Error: --min-quality must be a number');
+      const val = Number(raw);
+      if (!Number.isInteger(val)) {
+        console.error('Error: --min-quality must be an integer');
         process.exit(1);
       }
       options.minQuality = val;
@@ -647,7 +706,9 @@ async function main(): Promise<void> {
         break;
 
       case 'list':
-        await commandList(options.output === 'json' ? 'json' : 'text', options.pretty);
+        await commandList(options.output === 'json' ? 'json' : 'text', options.pretty, {
+          tempDir: options.tempDir,
+        });
         break;
 
       case 'promote':
@@ -655,7 +716,10 @@ async function main(): Promise<void> {
           console.error('Error: Reference ID required. Usage: arcfetch promote <ref-id>');
           process.exit(1);
         }
-        await commandPromote(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
+        await commandPromote(args[0], options.output === 'json' ? 'json' : 'text', options.pretty, {
+          tempDir: options.tempDir,
+          docsDir: options.docsDir,
+        });
         break;
 
       case 'delete':
@@ -663,11 +727,18 @@ async function main(): Promise<void> {
           console.error('Error: Reference ID required. Usage: arcfetch delete <ref-id>');
           process.exit(1);
         }
-        await commandDelete(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
+        await commandDelete(args[0], options.output === 'json' ? 'json' : 'text', options.pretty, {
+          tempDir: options.tempDir,
+        });
         break;
 
       case 'config':
-        await commandConfig();
+        await commandConfig({
+          minQuality: options.minQuality,
+          tempDir: options.tempDir,
+          docsDir: options.docsDir,
+          waitStrategy: options.waitStrategy,
+        });
         break;
 
       case 'mcp':
@@ -679,7 +750,9 @@ async function main(): Promise<void> {
           console.error('Error: Reference ID required. Usage: arcfetch links <ref-id>');
           process.exit(1);
         }
-        await commandLinks(args[0], options.output === 'json' ? 'json' : 'text', options.pretty);
+        await commandLinks(args[0], options.output === 'json' ? 'json' : 'text', options.pretty, {
+          tempDir: options.tempDir,
+        });
         break;
 
       case 'fetch-links':
@@ -692,7 +765,11 @@ async function main(): Promise<void> {
           options.output === 'json' ? 'json' : 'text',
           options.pretty,
           options.verbose,
-          options.refetch
+          options.refetch,
+          {
+            tempDir: options.tempDir,
+            docsDir: options.docsDir,
+          }
         );
         break;
 
@@ -706,7 +783,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Unexpected error:', getErrorMessage(err));
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error('Unexpected error:', getErrorMessage(err));
+    process.exit(1);
+  });
+}

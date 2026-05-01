@@ -21,23 +21,23 @@ describe('MCP server tools', () => {
 
   beforeEach(() => {
     cleanup();
-    originalTempDir = process.env.SOFETCH_TEMP_DIR;
-    originalDocsDir = process.env.SOFETCH_DOCS_DIR;
-    process.env.SOFETCH_TEMP_DIR = TEST_DIR;
-    process.env.SOFETCH_DOCS_DIR = TEST_DOCS;
+    originalTempDir = process.env.ARCFETCH_TEMP_DIR;
+    originalDocsDir = process.env.ARCFETCH_DOCS_DIR;
+    process.env.ARCFETCH_TEMP_DIR = TEST_DIR;
+    process.env.ARCFETCH_DOCS_DIR = TEST_DOCS;
   });
 
   afterEach(() => {
     cleanup();
     if (originalTempDir !== undefined) {
-      process.env.SOFETCH_TEMP_DIR = originalTempDir;
+      process.env.ARCFETCH_TEMP_DIR = originalTempDir;
     } else {
-      delete process.env.SOFETCH_TEMP_DIR;
+      delete process.env.ARCFETCH_TEMP_DIR;
     }
     if (originalDocsDir !== undefined) {
-      process.env.SOFETCH_DOCS_DIR = originalDocsDir;
+      process.env.ARCFETCH_DOCS_DIR = originalDocsDir;
     } else {
-      delete process.env.SOFETCH_DOCS_DIR;
+      delete process.env.ARCFETCH_DOCS_DIR;
     }
   });
 

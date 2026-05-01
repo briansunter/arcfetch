@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_CONFIG } from '../../src/config/defaults';
-import type { FetchiConfig } from '../../src/config/schema';
+import type { ArcfetchConfig } from '../../src/config/schema';
 import { extractLinksFromCached } from '../../src/core/cache';
 
 const TEST_TEMP_DIR = '.test-links-temp';
 const TEST_DOCS_DIR = '.test-links-docs';
 
-function getTestConfig(): FetchiConfig {
+function getTestConfig(): ArcfetchConfig {
   return {
     ...DEFAULT_CONFIG,
     paths: {
@@ -41,7 +41,7 @@ describe('Links extraction integration tests', () => {
       'article-with-links.md',
       `---
 title: "Article with Links"
-source_url: https://example.com/article
+source_url: "https://example.com/article"
 fetched_date: 2025-12-28
 type: web
 status: temporary
@@ -70,7 +70,7 @@ Also visit [MDN](https://developer.mozilla.org) for docs.
       'mixed-links.md',
       `---
 title: "Mixed Links"
-source_url: https://example.com/mixed
+source_url: "https://example.com/mixed"
 fetched_date: 2025-12-28
 type: web
 status: temporary
@@ -99,7 +99,7 @@ status: temporary
       'dupe-links.md',
       `---
 title: "Duplicate Links"
-source_url: https://example.com/dupes
+source_url: "https://example.com/dupes"
 fetched_date: 2025-12-28
 type: web
 status: temporary
@@ -126,7 +126,7 @@ status: temporary
       'no-links.md',
       `---
 title: "No Links"
-source_url: https://example.com/nolinks
+source_url: "https://example.com/nolinks"
 fetched_date: 2025-12-28
 type: web
 status: temporary
@@ -162,7 +162,7 @@ Just plain text without any links at all.
       'complex-links.md',
       `---
 title: "Complex Links"
-source_url: https://example.com/complex
+source_url: "https://example.com/complex"
 fetched_date: 2025-12-28
 type: web
 status: temporary
@@ -197,7 +197,7 @@ status: temporary
       'http-links.md',
       `---
 title: "HTTP Links"
-source_url: https://example.com/http
+source_url: "https://example.com/http"
 fetched_date: 2025-12-28
 type: web
 status: temporary
@@ -224,7 +224,7 @@ status: temporary
       'text-preservation.md',
       `---
 title: "Text Preservation"
-source_url: https://example.com/text
+source_url: "https://example.com/text"
 fetched_date: 2025-12-28
 type: web
 status: temporary

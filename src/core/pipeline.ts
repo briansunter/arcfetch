@@ -1,7 +1,7 @@
-import { lookup } from 'node:dns/promises';
-import type { FetchiConfig } from '../config/schema';
+import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { type ValidationResult, validateMarkdown } from '../utils/markdown-validator';
+import { assertSafePublicUrl } from '../utils/url-safety';
 import { processHtmlToMarkdown } from './extractor';
 import { closeBrowser, fetchWithBrowser } from './playwright/manager';
 
@@ -32,59 +32,83 @@ export type FetchResult = FetchResultSuccess | FetchResultError;
 interface SimpleFetchResult {
   html: string;
   error?: string;
+  retryable?: boolean;
 }
 
-function isPrivateHost(hostname: string): boolean {
-  if (hostname === 'localhost') {
+const MAX_REDIRECTS = 5;
+const MAX_HTML_BYTES = 10 * 1024 * 1024;
+
+function isSupportedContentType(contentType: string | null): boolean {
+  if (!contentType) {
     return true;
   }
 
-  // Check for IPv6 loopback
-  if (hostname === '::1' || hostname === '[::1]') {
-    return true;
-  }
+  const mediaType = contentType.split(';')[0].trim().toLowerCase();
 
-  // Strip brackets from IPv6 addresses
-  const cleanHost = hostname.replace(/^\[|\]$/g, '');
-
-  // Check IPv6 private ranges
-  const lowerHost = cleanHost.toLowerCase();
-  // fc00::/7 covers fc00:: through fdff::
-  if (/^f[cd][0-9a-f]{2}:/i.test(lowerHost)) {
-    return true;
-  }
-  // fe80::/10 (link-local)
-  if (/^fe[89ab][0-9a-f]:/i.test(lowerHost)) {
-    return true;
-  }
-
-  // Check IPv4 ranges
-  const ipv4Match = cleanHost.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4Match) {
-    const [, a, b] = ipv4Match.map(Number);
-    // 127.0.0.0/8 (loopback)
-    if (a === 127) return true;
-    // 10.0.0.0/8 (private)
-    if (a === 10) return true;
-    // 172.16.0.0/12 (private)
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    // 192.168.0.0/16 (private)
-    if (a === 192 && b === 168) return true;
-    // 169.254.0.0/16 (link-local / AWS metadata)
-    if (a === 169 && b === 254) return true;
-  }
-
-  return false;
+  return (
+    mediaType === 'text/html' ||
+    mediaType === 'application/xhtml+xml' ||
+    mediaType === 'text/plain' ||
+    mediaType === 'text/xml' ||
+    mediaType === 'application/xml' ||
+    mediaType.endsWith('+xml')
+  );
 }
 
-async function simpleFetch(url: string, verbose = false): Promise<SimpleFetchResult> {
-  try {
-    if (verbose) {
-      console.error(`📡 Simple fetch: ${url}`);
+async function readTextWithLimit(response: Response): Promise<string> {
+  const contentLength = response.headers.get('content-length');
+  if (contentLength && Number(contentLength) > MAX_HTML_BYTES) {
+    throw new Error(`Response too large (${contentLength} bytes, max ${MAX_HTML_BYTES})`);
+  }
+
+  if (!response.body) {
+    return response.text();
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!value) {
+      continue;
     }
 
-    const response = await fetch(url, {
-      redirect: 'follow',
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_HTML_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error(`Response too large (over ${MAX_HTML_BYTES} bytes)`);
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new TextDecoder().decode(bytes);
+}
+
+async function simpleFetch(url: string, verbose = false, redirectCount = 0): Promise<SimpleFetchResult> {
+  try {
+    const safety = await assertSafePublicUrl(url);
+    if (!safety.safe || !safety.url) {
+      return { html: '', error: safety.error ?? 'URL failed safety validation', retryable: false };
+    }
+
+    if (verbose) {
+      console.error(`📡 Simple fetch: ${safety.url.toString()}`);
+    }
+
+    const response = await fetch(safety.url, {
+      redirect: 'manual',
       signal: AbortSignal.timeout(30_000),
       headers: {
         'User-Agent':
@@ -94,11 +118,37 @@ async function simpleFetch(url: string, verbose = false): Promise<SimpleFetchRes
       },
     });
 
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) {
+        return { html: '', error: `HTTP ${response.status}: redirect without Location header`, retryable: false };
+      }
+      if (redirectCount >= MAX_REDIRECTS) {
+        return { html: '', error: `Too many redirects (max ${MAX_REDIRECTS})`, retryable: false };
+      }
+
+      const redirectUrl = new URL(location, safety.url).toString();
+      return simpleFetch(redirectUrl, verbose, redirectCount + 1);
+    }
+
     if (!response.ok) {
       return { html: '', error: `HTTP ${response.status}: ${response.statusText}` };
     }
 
-    const html = await response.text();
+    if (!isSupportedContentType(response.headers.get('content-type'))) {
+      return {
+        html: '',
+        error: `Unsupported content type: ${response.headers.get('content-type')}`,
+        retryable: false,
+      };
+    }
+
+    let html: string;
+    try {
+      html = await readTextWithLimit(response);
+    } catch (error) {
+      return { html: '', error: getErrorMessage(error), retryable: false };
+    }
 
     if (verbose) {
       console.error(`📡 Simple fetch: Got ${html.length} chars`);
@@ -107,11 +157,16 @@ async function simpleFetch(url: string, verbose = false): Promise<SimpleFetchRes
     return { html };
   } catch (error) {
     const message = getErrorMessage(error);
-    return { html: '', error: message };
+    return { html: '', error: message, retryable: true };
   }
 }
 
-async function tryPlaywright(url: string, config: FetchiConfig, reason: string, verbose = false): Promise<FetchResult> {
+async function tryPlaywright(
+  url: string,
+  config: ArcfetchConfig,
+  reason: string,
+  verbose = false
+): Promise<FetchResult> {
   if (verbose) {
     console.error(`🎭 Trying Playwright (reason: ${reason})`);
   }
@@ -162,71 +217,49 @@ async function tryPlaywright(url: string, config: FetchiConfig, reason: string, 
 
 export async function fetchUrl(
   url: string,
-  config: FetchiConfig,
+  config: ArcfetchConfig,
   verbose = false,
   forcePlaywright = false
 ): Promise<FetchResult> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return {
-        success: false,
-        error: `Invalid URL protocol: ${parsed.protocol} — only http and https are supported`,
-      };
-    }
-  } catch {
+  const safety = await assertSafePublicUrl(url);
+  if (!safety.safe || !safety.url) {
     return {
       success: false,
-      error: `Invalid URL: ${url}`,
+      error: safety.error ?? 'URL failed safety validation',
     };
   }
 
-  // SSRF protection: check if hostname is a private/internal address
-  const hostname = parsed.hostname;
-  if (isPrivateHost(hostname)) {
-    return {
-      success: false,
-      error: 'URL points to a private/internal network address',
-    };
-  }
-
-  // DNS resolution check: resolve hostname and verify the IP is not private
-  try {
-    const { address } = await lookup(hostname);
-    if (isPrivateHost(address)) {
-      return {
-        success: false,
-        error: 'URL points to a private/internal network address',
-      };
-    }
-  } catch {
-    // DNS resolution failure will be handled by the actual fetch
-  }
+  const safeUrl = safety.url.toString();
 
   if (forcePlaywright) {
     if (verbose) {
       console.error('⚡ Force Playwright mode enabled');
     }
-    return tryPlaywright(url, config, 'forced', verbose);
+    return tryPlaywright(safeUrl, config, 'forced', verbose);
   }
 
-  const simpleResult = await simpleFetch(url, verbose);
+  const simpleResult = await simpleFetch(safeUrl, verbose);
 
   if (simpleResult.error) {
     if (verbose) {
       console.error(`📡 Simple fetch failed: ${simpleResult.error}`);
     }
-    return tryPlaywright(url, config, 'network_error', verbose);
+    if (simpleResult.retryable === false) {
+      return {
+        success: false,
+        error: simpleResult.error,
+      };
+    }
+    return tryPlaywright(safeUrl, config, 'network_error', verbose);
   }
 
-  const extracted = await processHtmlToMarkdown(simpleResult.html, url, verbose);
+  const extracted = await processHtmlToMarkdown(simpleResult.html, safeUrl, verbose);
 
   if (extracted.error) {
     if (verbose) {
       console.error(`📝 Extraction failed: ${extracted.error}`);
     }
-    return tryPlaywright(url, config, 'extraction_failed', verbose);
+    return tryPlaywright(safeUrl, config, 'extraction_failed', verbose);
   }
 
   const quality = validateMarkdown(extracted.markdown!, { sourceHtmlLength: simpleResult.html.length });
@@ -257,7 +290,7 @@ export async function fetchUrl(
       console.error(`📊 Quality marginal (${quality.score}), trying Playwright...`);
     }
 
-    const playwrightResult = await tryPlaywright(url, config, 'quality_marginal', verbose);
+    const playwrightResult = await tryPlaywright(safeUrl, config, 'quality_marginal', verbose);
 
     if (playwrightResult.success && playwrightResult.quality.score > quality.score) {
       return playwrightResult;
@@ -278,7 +311,7 @@ export async function fetchUrl(
     console.error(`📊 Quality too low (${quality.score}), trying Playwright...`);
   }
 
-  return tryPlaywright(url, config, 'quality_too_low', verbose);
+  return tryPlaywright(safeUrl, config, 'quality_too_low', verbose);
 }
 
 export { closeBrowser };

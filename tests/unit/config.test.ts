@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
-import { FetchiConfigSchema } from '../../src/config/schema.js';
+import { ArcfetchConfigSchema } from '../../src/config/schema.js';
 
-describe('FetchiConfigSchema', () => {
+describe('ArcfetchConfigSchema', () => {
   test('validates default config', () => {
-    const result = FetchiConfigSchema.safeParse(DEFAULT_CONFIG);
+    const result = ArcfetchConfigSchema.safeParse(DEFAULT_CONFIG);
     expect(result.success).toBe(true);
   });
 
   test('applies defaults for empty object', () => {
-    const result = FetchiConfigSchema.parse({});
+    const result = ArcfetchConfigSchema.parse({});
     expect(result.quality.minScore).toBe(60);
     expect(result.quality.jsRetryThreshold).toBe(85);
     expect(result.paths.tempDir).toBe('.tmp/arcfetch');
@@ -19,7 +19,7 @@ describe('FetchiConfigSchema', () => {
   });
 
   test('allows custom quality thresholds', () => {
-    const result = FetchiConfigSchema.parse({
+    const result = ArcfetchConfigSchema.parse({
       quality: { minScore: 70, jsRetryThreshold: 90 },
     });
     expect(result.quality.minScore).toBe(70);
@@ -27,7 +27,7 @@ describe('FetchiConfigSchema', () => {
   });
 
   test('allows custom paths', () => {
-    const result = FetchiConfigSchema.parse({
+    const result = ArcfetchConfigSchema.parse({
       paths: { tempDir: 'cache', docsDir: 'docs/refs' },
     });
     expect(result.paths.tempDir).toBe('cache');
@@ -35,7 +35,7 @@ describe('FetchiConfigSchema', () => {
   });
 
   test('allows custom playwright settings', () => {
-    const result = FetchiConfigSchema.parse({
+    const result = ArcfetchConfigSchema.parse({
       playwright: { timeout: 60000, waitStrategy: 'domcontentloaded' },
     });
     expect(result.playwright.timeout).toBe(60000);
@@ -43,7 +43,12 @@ describe('FetchiConfigSchema', () => {
   });
 
   test('rejects quality score out of range', () => {
-    const result = FetchiConfigSchema.safeParse({ quality: { minScore: 150 } });
+    const result = ArcfetchConfigSchema.safeParse({ quality: { minScore: 150 } });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects minScore greater than jsRetryThreshold', () => {
+    const result = ArcfetchConfigSchema.safeParse({ quality: { minScore: 90, jsRetryThreshold: 80 } });
     expect(result.success).toBe(false);
   });
 });
