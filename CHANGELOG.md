@@ -1,3 +1,11 @@
+## [1.2.3](https://github.com/briansunter/arcfetch/compare/v1.2.2...v1.2.3) (2026-05-01)
+
+
+### Bug Fixes
+
+* harden security, error handling, type safety, and add tests ([eac4e45](https://github.com/briansunter/arcfetch/commit/eac4e459e78c7e1c0cb1e8d954ee567ef8777773))
+* harden SSRF defenses, repair cache invalidation, and rename to arcfetch ([0d53fb0](https://github.com/briansunter/arcfetch/commit/0d53fb0967cf665f8d63532c270f0a038dd7ba28))
+
 ## [1.2.2](https://github.com/briansunter/arcfetch/compare/v1.2.1...v1.2.2) (2026-02-07)
 
 

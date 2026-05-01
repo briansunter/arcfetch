@@ -1,6 +1,6 @@
 {
   "name": "arcfetch",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Fetch URLs, extract clean article content, and cache as markdown. Supports automatic JavaScript rendering via Playwright.",
   "type": "module",
   "main": "index.ts",
