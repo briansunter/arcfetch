@@ -1,7 +1,7 @@
 import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { extractLinksFromCached, saveToTemp } from './cache';
-import { closeBrowser, fetchUrl } from './pipeline';
+import { closeBrowser as defaultCloseBrowser, fetchUrl as defaultFetchUrl } from './pipeline';
 
 export interface FetchLinkResult {
   url: string;
@@ -18,11 +18,23 @@ export interface FetchLinksFromRefResult {
 
 const MAX_LINKS = 200;
 
+export interface FetchLinksDeps {
+  fetchUrl?: typeof defaultFetchUrl;
+  closeBrowser?: typeof defaultCloseBrowser;
+}
+
 export async function fetchLinksFromRef(
   config: ArcfetchConfig,
   refId: string,
-  options?: { refetch?: boolean; verbose?: boolean; onProgress?: (result: FetchLinkResult) => void }
+  options?: {
+    refetch?: boolean;
+    verbose?: boolean;
+    onProgress?: (result: FetchLinkResult) => void;
+  } & FetchLinksDeps
 ): Promise<FetchLinksFromRefResult> {
+  const fetchUrl = options?.fetchUrl ?? defaultFetchUrl;
+  const closeBrowser = options?.closeBrowser ?? defaultCloseBrowser;
+
   const linksResult = extractLinksFromCached(config, refId);
 
   if (linksResult.error) {

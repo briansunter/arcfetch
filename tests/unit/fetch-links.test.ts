@@ -1,13 +1,10 @@
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { existsSync, rmSync } from 'node:fs';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
 import type { ArcfetchConfig } from '../../src/config/schema.js';
 import { saveToTemp } from '../../src/core/cache';
+import { fetchLinksFromRef } from '../../src/core/fetch-links';
 import type { FetchResult } from '../../src/core/pipeline';
-
-// Capture the real pipeline module BEFORE mocking so we can restore it for
-// other test files (mock.module is global within a `bun test` run).
-const realPipeline = await import('../../src/core/pipeline');
 
 const mockFetchUrl = mock(
   (_url: string, _config?: unknown, _verbose?: boolean): Promise<FetchResult> =>
@@ -20,18 +17,6 @@ const mockFetchUrl = mock(
 );
 
 const mockCloseBrowser = mock(() => Promise.resolve());
-
-mock.module('../../src/core/pipeline', () => ({
-  fetchUrl: mockFetchUrl,
-  closeBrowser: mockCloseBrowser,
-}));
-
-// Now import the module under test (after mocking)
-const { fetchLinksFromRef } = await import('../../src/core/fetch-links');
-
-afterAll(() => {
-  mock.module('../../src/core/pipeline', () => realPipeline);
-});
 
 const TEST_DIR = '.test-fetch-links-cache';
 const TEST_DOCS = '.test-fetch-links-docs';
@@ -96,7 +81,10 @@ describe('fetchLinksFromRef', () => {
 Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c.com).`
       );
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.error).toBeUndefined();
       expect(result.results.length).toBe(3);
@@ -114,7 +102,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       const config = getTestConfig();
       const refId = await createCachedRef(config, 'Source', 'https://source.com', '[Only Link](https://only.com)');
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results[0].url).toBe('https://only.com');
       expect(result.results[0].status).toBe('new');
@@ -142,7 +133,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         });
       });
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results.length).toBe(7);
       expect(mockFetchUrl).toHaveBeenCalledTimes(7);
@@ -183,7 +177,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         });
       });
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results.length).toBe(3);
       expect(result.summary.failed).toBe(1);
@@ -216,7 +213,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         })
       );
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results.length).toBe(1);
       expect(result.results[0].status).toBe('failed');
@@ -232,7 +232,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         throw new Error('Unexpected crash');
       });
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results.length).toBe(1);
       expect(result.results[0].status).toBe('failed');
@@ -242,7 +245,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     test('returns error when source reference does not exist', async () => {
       const config = getTestConfig();
 
-      const result = await fetchLinksFromRef(config, 'non-existent-ref');
+      const result = await fetchLinksFromRef(config, 'non-existent-ref', {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('not found');
@@ -271,7 +277,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         })
       );
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results.length).toBe(1);
       expect(result.results[0].status).toBe('cached');
@@ -300,7 +309,11 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         progressResults.push(result);
       });
 
-      const result = await fetchLinksFromRef(config, refId, { onProgress });
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+        onProgress,
+      });
 
       // onProgress should have been called once per URL
       expect(onProgress).toHaveBeenCalledTimes(4);
@@ -323,7 +336,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       const refId = await createCachedRef(config, 'No Progress', 'https://source.com', '[Link](https://link.com)');
 
       // Should not throw when onProgress is not provided
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results.length).toBe(1);
     });
@@ -334,6 +350,8 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
       await expect(
         fetchLinksFromRef(config, refId, {
+          fetchUrl: mockFetchUrl,
+          closeBrowser: mockCloseBrowser,
           onProgress: () => {
             throw new Error('progress callback failed');
           },
@@ -350,7 +368,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       const config = getTestConfig();
       const refId = await createCachedRef(config, 'Cleanup Source', 'https://source.com', '[Link](https://link.com)');
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
       expect(result.results.length).toBe(1);
@@ -367,7 +388,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         })
       );
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
       expect(result.summary.failed).toBe(1);
@@ -382,7 +406,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         'Just plain text, no links at all.'
       );
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       // closeBrowser should NOT be called when there are zero links (early return)
       expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
@@ -401,7 +428,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
         '# Article\n\nNo links here, just text.'
       );
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.results).toEqual([]);
       expect(result.summary).toEqual({ new: 0, cached: 0, failed: 0 });
@@ -413,7 +443,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     test('returns error and empty results for non-existent reference', async () => {
       const config = getTestConfig();
 
-      const result = await fetchLinksFromRef(config, 'does-not-exist');
+      const result = await fetchLinksFromRef(config, 'does-not-exist', {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.error).toBeDefined();
       expect(result.results).toEqual([]);
@@ -429,7 +462,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       const links = Array.from({ length: 201 }, (_, i) => `[Link ${i}](https://example.com/page/${i})`);
       const refId = await createCachedRef(config, 'Too Many Links', 'https://source.com', links.join('\n'));
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('Too many links');
@@ -448,7 +484,10 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       const links = Array.from({ length: 200 }, (_, i) => `[Link ${i}](https://example.com/p/${i})`);
       const refId = await createCachedRef(config, 'Max Links', 'https://source.com', links.join('\n'));
 
-      const result = await fetchLinksFromRef(config, refId);
+      const result = await fetchLinksFromRef(config, refId, {
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      });
 
       // Should NOT return the MAX_LINKS error
       expect(result.error).toBeUndefined();
