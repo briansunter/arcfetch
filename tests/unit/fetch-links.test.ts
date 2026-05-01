@@ -1,11 +1,14 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { existsSync, rmSync } from 'node:fs';
 import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
 import type { ArcfetchConfig } from '../../src/config/schema.js';
 import { saveToTemp } from '../../src/core/cache';
 import type { FetchResult } from '../../src/core/pipeline';
 
-// Mock the pipeline module before importing fetch-links
+// Capture the real pipeline module BEFORE mocking so we can restore it for
+// other test files (mock.module is global within a `bun test` run).
+const realPipeline = await import('../../src/core/pipeline');
+
 const mockFetchUrl = mock(
   (_url: string, _config?: unknown, _verbose?: boolean): Promise<FetchResult> =>
     Promise.resolve({
@@ -25,6 +28,10 @@ mock.module('../../src/core/pipeline', () => ({
 
 // Now import the module under test (after mocking)
 const { fetchLinksFromRef } = await import('../../src/core/fetch-links');
+
+afterAll(() => {
+  mock.module('../../src/core/pipeline', () => realPipeline);
+});
 
 const TEST_DIR = '.test-fetch-links-cache';
 const TEST_DOCS = '.test-fetch-links-docs';
