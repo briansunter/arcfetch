@@ -4,7 +4,7 @@
  * Post-processing functions to clean and optimize markdown for LLM context efficiency
  */
 
-export function cleanMarkdown(markdown: string): string {
+function cleanMarkdown(markdown: string): string {
   if (!markdown.trim()) {
     return markdown;
   }
@@ -28,7 +28,7 @@ export function cleanMarkdown(markdown: string): string {
   return cleaned;
 }
 
-export function advancedClean(markdown: string): string {
+function advancedClean(markdown: string): string {
   let cleaned = markdown;
 
   cleaned = cleaned.replace(/\[([^\]]+)\]\(\)/g, '$1');
@@ -49,7 +49,7 @@ export function advancedClean(markdown: string): string {
   return cleaned;
 }
 
-export function finalCleanup(markdown: string): string {
+function finalCleanup(markdown: string): string {
   if (!markdown.trim()) {
     return markdown;
   }

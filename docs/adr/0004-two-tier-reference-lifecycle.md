@@ -1,0 +1,5 @@
+# Two-tier reference lifecycle: temp cache → manual `promote` → permanent docs
+
+Most fetches are exploratory — scanning links, checking whether a page is worth keeping, doing one-off lookups in an MCP session. Only a small fraction deserve to be kept as durable references. So `fetch` writes to a temp tier (`.tmp/arcfetch/<slug>.md`, `status: temporary`), and a separate explicit `promote` step moves a reference to the permanent tier (`docs/ai/references/<slug>.md`, `status: permanent`). Without that split, every fetch in an MCP-driven session would pollute whatever directory the user considers curated.
+
+The decision being recorded is that promotion is **always an explicit human step**, never automatic. It would be tempting to auto-promote results above some quality threshold, or to write directly to the permanent tier whenever the user passes a non-temp `--docs-dir`; both have been deliberately rejected. The two tiers exist precisely so that *deciding what's worth keeping* is a separate act from *fetching*, and a quality score is not a substitute for that judgement.

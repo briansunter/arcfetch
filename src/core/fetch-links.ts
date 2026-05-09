@@ -1,7 +1,8 @@
 import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
-import { extractLinksFromCached, saveToTemp } from './cache';
-import { closeBrowser as defaultCloseBrowser, fetchUrl as defaultFetchUrl } from './pipeline';
+import { extractLinksFromCached } from './cache';
+import { closeBrowser as defaultCloseBrowser } from './pipeline';
+import { type AcquisitionOutcome, acquireReference as defaultAcquireReference } from './references/acquire';
 
 export interface FetchLinkResult {
   url: string;
@@ -18,22 +19,25 @@ export interface FetchLinksFromRefResult {
 
 const MAX_LINKS = 200;
 
-export interface FetchLinksDeps {
-  fetchUrl?: typeof defaultFetchUrl;
+export interface FetchLinksOptions {
+  refetch?: boolean;
+  verbose?: boolean;
+  onProgress?: (result: FetchLinkResult) => void;
+  acquireReference?: (
+    url: string,
+    config: ArcfetchConfig,
+    opts?: { refetch?: boolean; verbose?: boolean }
+  ) => Promise<AcquisitionOutcome>;
   closeBrowser?: typeof defaultCloseBrowser;
 }
 
 export async function fetchLinksFromRef(
   config: ArcfetchConfig,
   refId: string,
-  options?: {
-    refetch?: boolean;
-    verbose?: boolean;
-    onProgress?: (result: FetchLinkResult) => void;
-  } & FetchLinksDeps
+  options: FetchLinksOptions = {}
 ): Promise<FetchLinksFromRefResult> {
-  const fetchUrl = options?.fetchUrl ?? defaultFetchUrl;
-  const closeBrowser = options?.closeBrowser ?? defaultCloseBrowser;
+  const acquire = options.acquireReference ?? defaultAcquireReference;
+  const closeBrowser = options.closeBrowser ?? defaultCloseBrowser;
 
   const linksResult = extractLinksFromCached(config, refId);
 
@@ -58,31 +62,25 @@ export async function fetchLinksFromRef(
 
   const results: FetchLinkResult[] = [];
   const concurrency = 3;
-  const verbose = options?.verbose ?? false;
-  const refetch = options?.refetch ?? false;
+  const verbose = options.verbose ?? false;
+  const refetch = options.refetch ?? false;
 
   try {
     for (let i = 0; i < urls.length; i += concurrency) {
       const batch = urls.slice(i, i + concurrency);
       const batchPromises = batch.map(async (url): Promise<FetchLinkResult> => {
         try {
-          const fetchResult = await fetchUrl(url, config, verbose);
+          const outcome = await acquire(url, config, { refetch, verbose });
 
-          if (!fetchResult.success) {
-            return { url, status: 'failed', error: fetchResult.error };
+          if (!outcome.ok) {
+            return { url, status: 'failed', error: outcome.error };
           }
 
-          const saveResult = await saveToTemp(config, fetchResult.title, url, fetchResult.markdown, undefined, refetch);
-
-          if (saveResult.error) {
-            return { url, status: 'failed', error: saveResult.error };
+          if (outcome.source === 'cached') {
+            return { url, status: 'cached', refId: outcome.refId };
           }
 
-          if (saveResult.alreadyExists) {
-            return { url, status: 'cached', refId: saveResult.refId };
-          }
-
-          return { url, status: 'new', refId: saveResult.refId };
+          return { url, status: 'new', refId: outcome.refId };
         } catch (error) {
           const message = getErrorMessage(error);
           return { url, status: 'failed', error: message };
@@ -92,7 +90,7 @@ export async function fetchLinksFromRef(
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
 
-      if (options?.onProgress) {
+      if (options.onProgress) {
         for (const r of batchResults) {
           options.onProgress(r);
         }

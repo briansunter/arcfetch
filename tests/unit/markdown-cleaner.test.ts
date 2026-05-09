@@ -1,94 +1,99 @@
 #!/usr/bin/env bun
 import { describe, expect, test } from 'bun:test';
-import { advancedClean, cleanMarkdown, cleanMarkdownComplete } from '../../src/utils/markdown-cleaner.js';
+import { cleanMarkdownComplete } from '../../src/utils/markdown-cleaner.js';
 
-describe('cleanMarkdown', () => {
-  test('removes excessive newlines', () => {
-    const input = 'Line 1\n\n\n\nLine 2\n\n\n\n\nLine 3';
-    const expected = 'Line 1\n\nLine 2\n\nLine 3';
-    expect(cleanMarkdown(input)).toBe(expected);
+describe('cleanMarkdownComplete: whitespace and newlines', () => {
+  test('collapses excessive newlines to at most a blank line', () => {
+    const result = cleanMarkdownComplete('Line 1\n\n\n\nLine 2\n\n\n\n\nLine 3');
+    expect(result).not.toContain('\n\n\n');
+    expect(result).toContain('Line 1');
+    expect(result).toContain('Line 2');
+    expect(result).toContain('Line 3');
   });
 
-  test('removes trailing whitespace from lines', () => {
-    const input = 'Line 1   \nLine 2\t\t\nLine 3  ';
-    const expected = 'Line 1\nLine 2\nLine 3';
-    expect(cleanMarkdown(input)).toBe(expected);
+  test('strips trailing whitespace from lines', () => {
+    const result = cleanMarkdownComplete('Line 1   \nLine 2\t\t\nLine 3  ');
+    expect(result).not.toMatch(/Line 1[ \t]+\n/);
+    expect(result).not.toMatch(/Line 2[ \t]+\n/);
+    expect(result).not.toMatch(/Line 3[ \t]+\n?$/m);
   });
 
-  test('fixes spacing around headers', () => {
-    const input = 'Text before\n# Header\nText after';
-    const result = cleanMarkdown(input);
-    expect(result).toContain('\n\n# Header\n\n');
+  test('inserts a blank line before headers', () => {
+    const result = cleanMarkdownComplete('Text before\n# Header\nText after');
+    expect(result).toContain('\n\n# Header');
   });
 
-  test('fixes spacing before lists', () => {
-    const input = 'Text before\n- List item';
-    const result = cleanMarkdown(input);
+  test('inserts a blank line before lists', () => {
+    const result = cleanMarkdownComplete('Text before\n- List item');
     expect(result).toContain('\n\n- List item');
   });
 
   test('removes HTML comments', () => {
-    const input = 'Text before<!-- comment -->text after';
-    const expected = 'Text before text after';
-    expect(cleanMarkdown(input)).toBe(expected);
+    const result = cleanMarkdownComplete('Text before<!-- comment -->text after');
+    expect(result).not.toContain('<!--');
+    expect(result).toContain('Text before');
+    expect(result).toContain('text after');
   });
 
-  test('fixes code block spacing', () => {
-    const input = 'Text before\n```\ncode\n```\ntext after';
-    const result = cleanMarkdown(input);
-    expect(result).toContain('\n\n```\n\ncode\n\n```\n\n');
+  test('inserts blank lines around fenced code blocks', () => {
+    const result = cleanMarkdownComplete('Text before\n```\ncode\n```\ntext after');
+    expect(result).toContain('\n\n```');
+    expect(result).toContain('```\n\n');
   });
 
-  test('normalizes line endings', () => {
-    const input = 'Line 1\r\nLine 2\r\nLine 3';
-    const expected = 'Line 1\nLine 2\nLine 3';
-    expect(cleanMarkdown(input)).toBe(expected);
+  test('normalizes Windows line endings', () => {
+    const result = cleanMarkdownComplete('Line 1\r\nLine 2\r\nLine 3');
+    expect(result).not.toContain('\r');
+    expect(result).toContain('Line 1\nLine 2\nLine 3');
   });
 });
 
-describe('advancedClean', () => {
-  test('removes empty links', () => {
-    const input = 'This is a [link]() to nowhere';
-    const expected = 'This is a link to nowhere';
-    expect(advancedClean(input)).toBe(expected);
+describe('cleanMarkdownComplete: link and emphasis cleanup', () => {
+  test('strips empty link wrappers, keeping the text', () => {
+    const result = cleanMarkdownComplete('This is a [link]() to nowhere');
+    expect(result).toContain('This is a link to nowhere');
+    expect(result).not.toContain('[link]()');
   });
 
   test('removes empty bold markers', () => {
-    const input = 'Text with **** empty bold';
-    const expected = 'Text with empty bold';
-    expect(advancedClean(input)).toBe(expected);
-  });
-
-  test('removes zero-width characters', () => {
-    const input = 'Text\u200Bwith\u200Czero\u200Dwidth\uFEFFchars';
-    const expected = 'Textwithzerowidthchars';
-    expect(advancedClean(input)).toBe(expected);
-  });
-
-  test('normalizes fancy quotes', () => {
-    const input = '\u201CHello\u201D and \u2018world\u2019';
-    const result = advancedClean(input);
-    expect(result).not.toContain('\u201C');
-    expect(result).not.toContain('\u201D');
-    expect(result).not.toContain('\u2018');
-    expect(result).not.toContain('\u2019');
-  });
-
-  test('normalizes dashes', () => {
-    const input = 'en–dash and em—dash';
-    const expected = 'en-dash and em-dash';
-    expect(advancedClean(input)).toBe(expected);
-  });
-
-  test('removes multiple spaces', () => {
-    const input = 'Text  with   multiple    spaces';
-    const expected = 'Text with multiple spaces';
-    expect(advancedClean(input)).toBe(expected);
+    const result = cleanMarkdownComplete('Text with **** empty bold');
+    expect(result).toContain('empty bold');
+    expect(result).not.toContain('****');
   });
 });
 
-describe('cleanMarkdownComplete', () => {
-  test('applies full pipeline', () => {
+describe('cleanMarkdownComplete: character normalization', () => {
+  test('removes zero-width characters', () => {
+    const result = cleanMarkdownComplete('Text​with‌zero‍width﻿chars');
+    expect(result).toContain('Textwithzerowidthchars');
+    expect(result).not.toMatch(/[​-‍﻿]/);
+  });
+
+  test('normalizes fancy quotes to ASCII', () => {
+    const result = cleanMarkdownComplete('“Hello” and ‘world’');
+    expect(result).not.toContain('“');
+    expect(result).not.toContain('”');
+    expect(result).not.toContain('‘');
+    expect(result).not.toContain('’');
+  });
+
+  test('normalizes en/em dashes to ASCII hyphens', () => {
+    const result = cleanMarkdownComplete('en–dash and em—dash');
+    expect(result).not.toContain('–');
+    expect(result).not.toContain('—');
+    expect(result).toContain('en-dash');
+    expect(result).toContain('em-dash');
+  });
+
+  test('collapses runs of multiple spaces', () => {
+    const result = cleanMarkdownComplete('Text  with   multiple    spaces');
+    expect(result).toContain('Text with multiple spaces');
+    expect(result).not.toMatch(/ {2,}/);
+  });
+});
+
+describe('cleanMarkdownComplete: full pipeline', () => {
+  test('applies all transformations together', () => {
     const input =
       'Text before<!-- comment -->\n\n# Header\n\nParagraph with "fancy quotes" and en-dash.\n\n- List item 1\n- List item 2\n\nText with  multiple   spaces.\n\n```js\ncode\n```\n\nEnd text.';
 
@@ -116,7 +121,7 @@ describe('cleanMarkdownComplete', () => {
     expect(result).toContain('- Item 1');
   });
 
-  test('token reduction: normalizes formatting', () => {
+  test('removes empty link wrappers in messy real-world input', () => {
     const messyMarkdown =
       '# Article Title\n\n\nThe actual article content is here.  It has  some   spacing issues.\n\n"Fancy quotes" and em—dashes too.\n\n\nRelated Articles:\n- [Article 1]()\n- [Article 2]()';
 
@@ -124,26 +129,26 @@ describe('cleanMarkdownComplete', () => {
 
     expect(clean).not.toContain('\n\n\n');
     expect(clean).not.toContain('  some   spacing');
-    expect(clean).not.toContain('\u201C');
-    expect(clean).not.toContain('\u2014');
+    expect(clean).not.toContain('“');
+    expect(clean).not.toContain('—');
     expect(clean).toContain('# Article Title');
     expect(clean).toContain('actual article content');
     expect(clean).not.toContain('[Article 1]()');
   });
 });
 
-describe('edge cases', () => {
-  test('handles empty string', () => {
+describe('cleanMarkdownComplete: edge cases', () => {
+  test('returns empty string unchanged', () => {
     const result = cleanMarkdownComplete('');
     expect(result).toBe('');
   });
 
-  test('handles string with only whitespace', () => {
+  test('handles whitespace-only input', () => {
     const result = cleanMarkdownComplete('   \n\n  \t\t  \n\n  ');
     expect(result.trim()).toBe('');
   });
 
-  test('handles markdown without issues', () => {
+  test('passes through already-clean markdown', () => {
     const input = '# Clean Markdown\n\nThis is already clean.';
     const result = cleanMarkdownComplete(input);
     expect(result).toContain('# Clean Markdown');
@@ -159,7 +164,6 @@ describe('edge cases', () => {
 
   test('preserves tables', () => {
     const input = '| Header 1 | Header 2 |\n| -------- | -------- |\n| Cell 1   | Cell 2   |';
-
     const result = cleanMarkdownComplete(input);
     expect(result).toContain('Header 1');
     expect(result).toContain('Cell 1');

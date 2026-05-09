@@ -15,16 +15,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { loadConfig } from './src/config/index';
-import {
-  deleteCached,
-  extractLinksFromCached,
-  findByUrl,
-  listCached,
-  promoteReference,
-  saveToTemp,
-} from './src/core/cache';
+import { deleteCached, extractLinksFromCached, listCached, promoteReference } from './src/core/cache';
 import { fetchLinksFromRef } from './src/core/fetch-links';
-import { closeBrowser, type FetchResult, fetchUrl } from './src/core/pipeline';
+import { closeBrowser } from './src/core/pipeline';
+import { acquireReference } from './src/core/references/acquire';
 import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
 
@@ -297,74 +291,31 @@ async function handleFetchUrl(args: {
     tempDir: args.tempDir,
   });
 
-  if (!args.refetch) {
-    const cached = findByUrl(config, args.url);
-    if (cached) {
-      const outputFormat = args.outputFormat || 'summary';
-      if (outputFormat === 'path') {
-        return { content: [{ type: 'text', text: cached.filepath }] };
-      }
-      if (outputFormat === 'json') {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  success: true,
-                  alreadyExists: true,
-                  refId: cached.refId,
-                  filepath: cached.filepath,
-                  message: 'URL already fetched. Use refetch: true to update.',
-                },
-                null,
-                2
-              ),
-            },
-          ],
-        };
-      }
+  const outcome = await acquireReference(args.url, config, {
+    query: args.query,
+    refetch: args.refetch,
+  });
+
+  const outputFormat = args.outputFormat || 'summary';
+
+  if (!outcome.ok) {
+    if (outcome.stage === 'save') {
       return {
-        content: [
-          {
-            type: 'text',
-            text: `Already cached: ${cached.refId}\nFilepath: ${cached.filepath}\n\nUse refetch: true to update.`,
-          },
-        ],
+        content: [{ type: 'text', text: `Error: Save failed: ${outcome.error}` }],
       };
     }
-  }
-
-  let result: FetchResult;
-  try {
-    result = await fetchUrl(args.url, config, false);
-  } finally {
-    await closeBrowser();
-  }
-
-  if (!result.success) {
     const errorText =
-      `Error: ${result.error}` +
-      (result.suggestion ? `\nSuggestion: ${result.suggestion}` : '') +
-      (result.quality ? `\nQuality: ${result.quality.score}/100` : '');
+      `Error: ${outcome.error}` +
+      (outcome.suggestion ? `\nSuggestion: ${outcome.suggestion}` : '') +
+      (outcome.quality ? `\nQuality: ${outcome.quality.score}/100` : '');
     return {
       content: [{ type: 'text', text: errorText }],
     };
   }
 
-  const saveResult = await saveToTemp(config, result.title, args.url, result.markdown, args.query, args.refetch);
-
-  if (saveResult.error) {
-    return {
-      content: [{ type: 'text', text: `Error: Save failed: ${saveResult.error}` }],
-    };
-  }
-
-  // Handle already exists case
-  if (saveResult.alreadyExists) {
-    const outputFormat = args.outputFormat || 'summary';
+  if (outcome.source === 'cached') {
     if (outputFormat === 'path') {
-      return { content: [{ type: 'text', text: saveResult.filepath }] };
+      return { content: [{ type: 'text', text: outcome.filepath }] };
     }
     if (outputFormat === 'json') {
       return {
@@ -375,8 +326,8 @@ async function handleFetchUrl(args: {
               {
                 success: true,
                 alreadyExists: true,
-                refId: saveResult.refId,
-                filepath: saveResult.filepath,
+                refId: outcome.refId,
+                filepath: outcome.filepath,
                 message: 'URL already fetched. Use refetch: true to update.',
               },
               null,
@@ -390,37 +341,33 @@ async function handleFetchUrl(args: {
       content: [
         {
           type: 'text',
-          text: `Already cached: ${saveResult.refId}\nFilepath: ${saveResult.filepath}\n\nUse refetch: true to update.`,
+          text: `Already cached: ${outcome.refId}\nFilepath: ${outcome.filepath}\n\nUse refetch: true to update.`,
         },
       ],
     };
   }
 
-  const outputFormat = args.outputFormat || 'summary';
-
-  // Path-only output
   if (outputFormat === 'path') {
     return {
-      content: [{ type: 'text', text: saveResult.filepath }],
+      content: [{ type: 'text', text: outcome.filepath }],
     };
   }
 
-  // JSON output
   if (outputFormat === 'json') {
     const jsonData = {
       success: true,
-      refId: saveResult.refId,
-      title: result.title,
-      byline: result.byline,
-      siteName: result.siteName,
-      excerpt: result.excerpt,
+      refId: outcome.refId,
+      title: outcome.title,
+      byline: outcome.byline,
+      siteName: outcome.siteName,
+      excerpt: outcome.excerpt,
       url: args.url,
-      filepath: saveResult.filepath,
-      size: result.markdown.length,
-      tokens: Math.round(result.markdown.length / 4),
-      quality: result.quality.score,
-      usedPlaywright: result.usedPlaywright,
-      playwrightReason: result.playwrightReason,
+      filepath: outcome.filepath,
+      size: outcome.markdownLength,
+      tokens: Math.round(outcome.markdownLength / 4),
+      quality: outcome.quality.score,
+      usedPlaywright: outcome.usedPlaywright,
+      playwrightReason: outcome.playwrightReason,
       query: args.query,
     };
     return {
@@ -428,22 +375,20 @@ async function handleFetchUrl(args: {
     };
   }
 
-  // Summary output (default) - clean, LLM-friendly
-  let text = `Cached: ${saveResult.refId}\n\n`;
-  text += `Title: ${result.title}\n`;
-  if (result.byline) text += `Author: ${result.byline}\n`;
-  if (result.siteName) text += `Source: ${result.siteName}\n`;
-  if (result.excerpt) {
-    const excerpt = result.excerpt.slice(0, 150);
-    text += `Summary: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}\n`;
+  let text = `Cached: ${outcome.refId}\n\n`;
+  text += `Title: ${outcome.title}\n`;
+  if (outcome.byline) text += `Author: ${outcome.byline}\n`;
+  if (outcome.siteName) text += `Source: ${outcome.siteName}\n`;
+  if (outcome.excerpt) {
+    const excerpt = outcome.excerpt.slice(0, 150);
+    text += `Summary: ${excerpt}${outcome.excerpt.length > 150 ? '...' : ''}\n`;
   }
-  text += `\nFilepath: ${saveResult.filepath}\n`;
-  const markdownLength = result.markdown.length;
-  text += `Size: ${markdownLength} chars (~${Math.round(markdownLength / 4)} tokens)\n`;
-  text += `Quality: ${result.quality.score}/100`;
+  text += `\nFilepath: ${outcome.filepath}\n`;
+  text += `Size: ${outcome.markdownLength} chars (~${Math.round(outcome.markdownLength / 4)} tokens)\n`;
+  text += `Quality: ${outcome.quality.score}/100`;
 
-  if (result.usedPlaywright) {
-    text += `\nPlaywright: Yes (${result.playwrightReason})`;
+  if (outcome.usedPlaywright) {
+    text += `\nPlaywright: Yes (${outcome.playwrightReason})`;
   }
 
   return {

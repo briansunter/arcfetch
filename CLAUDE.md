@@ -62,8 +62,11 @@ The fetching pipeline in `pipeline.ts` follows this flow:
 6. If score < 60: Playwright required, fail if still below threshold
 
 Key modules:
+- `references/acquire.ts` - The "URL → Reference" workflow. One function (`acquireReference`) every consumer (CLI, MCP, fetch-links) calls; owns cache lookup, fetch, save, browser cleanup. Tests fake this seam to drive higher-level logic.
+- `references/format.ts` - On-disk Reference format: frontmatter (de)serialization, slug rules, the `temporary`↔`permanent` status invariant. Only place that knows the persistence shape.
 - `extractor.ts` - HTML→markdown using Mozilla Readability + Turndown
-- `cache.ts` - File-based caching with slug-based IDs, YAML frontmatter metadata, link extraction
+- `cache.ts` - The Reference store: directory scan, mtime-keyed in-memory index, save/list/find/promote/delete. Delegates format concerns to `references/format`.
+- `fetch-links.ts` - Concurrent fetch of links extracted from a cached reference (max 3 in flight, MAX_LINKS=200).
 - `playwright/manager.ts` - Playwright abstraction (local mode only, uses stealth plugin)
 - `playwright/local.ts` - Local Playwright browser management
 
@@ -89,7 +92,9 @@ Environment variables:
 
 ### Utilities (`src/utils/`)
 - `markdown-validator.ts` - Quality scoring based on leftover HTML tags, content length, ratio analysis
-- `markdown-cleaner.ts` - Post-processing cleanup of converted markdown
+- `markdown-cleaner.ts` - Post-processing cleanup of converted markdown (single public export: `cleanMarkdownComplete`)
+- `markdown-links.ts` - Pure markdown-link parser (`extractLinksFromMarkdown`); extracted from cache.ts so it can be tested independently
+- `url-safety.ts` - SSRF defense: rejects private/loopback/CGNAT/multicast addresses both at URL parse time and after DNS resolution (see ADR-0002)
 - `version.ts` - Reads version from package.json
 
 ### File Storage Pattern
@@ -109,6 +114,19 @@ Fetched content is saved as markdown files with YAML frontmatter:
 
 ## Gotchas
 - Playwright is installed via `postinstall` script with `|| true` (won't fail if install fails)
-- `closeBrowser()` must be called after fetching to avoid dangling Playwright processes
-- `saveToTemp` has a 100ms delay in CLI mode to work around a Bun file-flush issue
+- `closeBrowser()` is called from inside `acquireReference`'s `finally` — call sites that go through that module don't need their own cleanup
 - Semantic-release is configured on `master` branch with `@semantic-release/git` for auto-versioning
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as markdown files in `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.

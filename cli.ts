@@ -2,16 +2,10 @@
 
 import { serveMcp } from './index';
 import { loadConfig } from './src/config/index';
-import {
-  deleteCached,
-  extractLinksFromCached,
-  findByUrl,
-  listCached,
-  promoteReference,
-  saveToTemp,
-} from './src/core/cache';
+import { deleteCached, extractLinksFromCached, listCached, promoteReference } from './src/core/cache';
 import { type FetchLinkResult, fetchLinksFromRef } from './src/core/fetch-links';
-import { closeBrowser, type FetchResult, fetchUrl } from './src/core/pipeline';
+import { closeBrowser } from './src/core/pipeline';
+import { acquireReference } from './src/core/references/acquire';
 import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
 
@@ -156,95 +150,70 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     console.error('🔧 Config:', JSON.stringify(config, null, 2));
   }
 
-  if (!options.refetch) {
-    const cached = findByUrl(config, options.url);
-    if (cached) {
-      outputAlreadyCached(cached.refId, cached.filepath, options.output, options.pretty);
-      return;
+  const outcome = await acquireReference(options.url, config, {
+    query: options.query,
+    refetch: options.refetch,
+    verbose: options.verbose,
+    forcePlaywright: options.forcePlaywright,
+  });
+
+  if (!outcome.ok) {
+    if (outcome.stage === 'save') {
+      if (options.output === 'json') {
+        console.log(JSON.stringify({ success: false, error: outcome.error }, null, 2));
+      } else {
+        console.error(`Error: Save failed: ${outcome.error}`);
+      }
+      process.exit(1);
     }
-  }
 
-  // Fetch URL
-  let result: FetchResult;
-  try {
-    result = await fetchUrl(options.url, config, options.verbose, options.forcePlaywright);
-  } finally {
-    // Close browser if it was used
-    await closeBrowser();
-  }
-
-  if (!result.success) {
     if (options.output === 'json') {
       console.log(
         JSON.stringify(
           {
             success: false,
-            error: result.error,
-            suggestion: result.suggestion,
-            quality: result.quality,
+            error: outcome.error,
+            suggestion: outcome.suggestion,
+            quality: outcome.quality,
           },
           null,
           2
         )
       );
     } else {
-      console.error(`Error: ${result.error}`);
-      if (result.suggestion) {
-        console.error(`Suggestion: ${result.suggestion}`);
+      console.error(`Error: ${outcome.error}`);
+      if (outcome.suggestion) {
+        console.error(`Suggestion: ${outcome.suggestion}`);
       }
-      if (result.quality) {
-        console.error(`Quality: ${result.quality.score}/100`);
+      if (outcome.quality) {
+        console.error(`Quality: ${outcome.quality.score}/100`);
       }
     }
     process.exit(1);
   }
 
-  // Save to temp
-  const saveResult = await saveToTemp(
-    config,
-    result.title,
-    options.url,
-    result.markdown,
-    options.query,
-    options.refetch
-  );
-
-  // Small delay to ensure file is flushed to disk (Bun-specific issue)
-  await new Promise((resolve) => setTimeout(resolve, 100));
-
-  if (saveResult.error) {
-    if (options.output === 'json') {
-      console.log(JSON.stringify({ success: false, error: saveResult.error }, null, 2));
-    } else {
-      console.error(`Error: Save failed: ${saveResult.error}`);
-    }
-    process.exit(1);
-  }
-
-  // Handle already exists case
-  if (saveResult.alreadyExists) {
-    outputAlreadyCached(saveResult.refId, saveResult.filepath, options.output, options.pretty);
+  if (outcome.source === 'cached') {
+    outputAlreadyCached(outcome.refId, outcome.filepath, options.output, options.pretty);
     return;
   }
 
-  // Output result
   if (options.output === 'json') {
     console.log(
       JSON.stringify(
         {
           success: true,
-          refId: saveResult.refId,
-          title: result.title,
-          byline: result.byline,
-          siteName: result.siteName,
-          excerpt: result.excerpt,
+          refId: outcome.refId,
+          title: outcome.title,
+          byline: outcome.byline,
+          siteName: outcome.siteName,
+          excerpt: outcome.excerpt,
           url: options.url,
-          filepath: saveResult.filepath,
-          size: result.markdown.length,
-          tokens: Math.round(result.markdown.length / 4),
-          quality: result.quality.score,
-          usedPlaywright: result.usedPlaywright,
-          playwrightReason: result.playwrightReason,
+          filepath: outcome.filepath,
+          size: outcome.markdownLength,
+          tokens: Math.round(outcome.markdownLength / 4),
+          quality: outcome.quality.score,
+          usedPlaywright: outcome.usedPlaywright,
+          playwrightReason: outcome.playwrightReason,
           query: options.query,
         },
         null,
@@ -252,41 +221,39 @@ async function commandFetch(options: FetchOptions): Promise<void> {
       )
     );
   } else if (options.output === 'summary') {
-    console.log(`${saveResult.refId}|${saveResult.filepath}`);
+    console.log(`${outcome.refId}|${outcome.filepath}`);
   } else if (options.output === 'path') {
-    console.log(saveResult.filepath);
+    console.log(outcome.filepath);
   } else if (options.pretty) {
-    // Pretty output with emojis (human-friendly)
-    console.log(`✅ Cached: ${saveResult.refId}\n`);
-    console.log(`**Title**: ${result.title}`);
-    if (result.byline) console.log(`**Author**: ${result.byline}`);
-    if (result.siteName) console.log(`**Source**: ${result.siteName}`);
-    if (result.excerpt) {
-      const excerpt = result.excerpt.slice(0, 150);
-      console.log(`**Summary**: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}`);
+    console.log(`✅ Cached: ${outcome.refId}\n`);
+    console.log(`**Title**: ${outcome.title}`);
+    if (outcome.byline) console.log(`**Author**: ${outcome.byline}`);
+    if (outcome.siteName) console.log(`**Source**: ${outcome.siteName}`);
+    if (outcome.excerpt) {
+      const excerpt = outcome.excerpt.slice(0, 150);
+      console.log(`**Summary**: ${excerpt}${outcome.excerpt.length > 150 ? '...' : ''}`);
     }
-    console.log(`\n**Saved to**: ${saveResult.filepath}`);
-    console.log(`**Size**: ${result.markdown.length} chars (~${Math.round(result.markdown.length / 4)} tokens)`);
-    console.log(`**Quality**: ${result.quality.score}/100`);
-    if (result.usedPlaywright) {
-      console.log(`**Playwright**: Yes (${result.playwrightReason})`);
+    console.log(`\n**Saved to**: ${outcome.filepath}`);
+    console.log(`**Size**: ${outcome.markdownLength} chars (~${Math.round(outcome.markdownLength / 4)} tokens)`);
+    console.log(`**Quality**: ${outcome.quality.score}/100`);
+    if (outcome.usedPlaywright) {
+      console.log(`**Playwright**: Yes (${outcome.playwrightReason})`);
     }
-    console.log(`\n💡 To promote to docs: arcfetch promote ${saveResult.refId}`);
+    console.log(`\n💡 To promote to docs: arcfetch promote ${outcome.refId}`);
   } else {
-    // Plain output (LLM-friendly, default)
-    console.log(`Cached: ${saveResult.refId}`);
-    console.log(`Title: ${result.title}`);
-    if (result.byline) console.log(`Author: ${result.byline}`);
-    if (result.siteName) console.log(`Source: ${result.siteName}`);
-    if (result.excerpt) {
-      const excerpt = result.excerpt.slice(0, 150);
-      console.log(`Summary: ${excerpt}${result.excerpt.length > 150 ? '...' : ''}`);
+    console.log(`Cached: ${outcome.refId}`);
+    console.log(`Title: ${outcome.title}`);
+    if (outcome.byline) console.log(`Author: ${outcome.byline}`);
+    if (outcome.siteName) console.log(`Source: ${outcome.siteName}`);
+    if (outcome.excerpt) {
+      const excerpt = outcome.excerpt.slice(0, 150);
+      console.log(`Summary: ${excerpt}${outcome.excerpt.length > 150 ? '...' : ''}`);
     }
-    console.log(`Filepath: ${saveResult.filepath}`);
-    console.log(`Size: ${result.markdown.length} chars (~${Math.round(result.markdown.length / 4)} tokens)`);
-    console.log(`Quality: ${result.quality.score}/100`);
-    if (result.usedPlaywright) {
-      console.log(`Playwright: Yes (${result.playwrightReason})`);
+    console.log(`Filepath: ${outcome.filepath}`);
+    console.log(`Size: ${outcome.markdownLength} chars (~${Math.round(outcome.markdownLength / 4)} tokens)`);
+    console.log(`Quality: ${outcome.quality.score}/100`);
+    if (outcome.usedPlaywright) {
+      console.log(`Playwright: Yes (${outcome.playwrightReason})`);
     }
   }
 }
