@@ -4,6 +4,7 @@ import { type ValidationResult, validateMarkdown } from '../utils/markdown-valid
 import { assertSafePublicUrl } from '../utils/url-safety';
 import { processHtmlToMarkdown } from './extractor';
 import { closeBrowser, fetchWithBrowser } from './playwright/manager';
+import { routeByQuality } from './quality-router';
 
 export interface FetchResultSuccess {
   success: true;
@@ -190,8 +191,9 @@ async function tryPlaywright(
   }
 
   const quality = validateMarkdown(extracted.markdown!, { sourceHtmlLength: browserResult.html.length });
+  const decision = routeByQuality(quality, config.quality);
 
-  if (quality.score < config.quality.minScore) {
+  if (decision.action === 'require-playwright') {
     return {
       success: false,
       error: `Content quality too low (${quality.score}/100) even with JavaScript rendering`,
@@ -273,45 +275,48 @@ export async function fetchUrl(
     }
   }
 
-  if (quality.score >= config.quality.jsRetryThreshold) {
-    return {
-      success: true,
-      markdown: extracted.markdown!,
-      title: extracted.title ?? '',
-      byline: extracted.byline,
-      excerpt: extracted.excerpt,
-      siteName: extracted.siteName,
-      quality,
-    };
-  }
+  const decision = routeByQuality(quality, config.quality);
 
-  if (quality.score >= config.quality.minScore) {
-    if (verbose) {
-      console.error(`📊 Quality marginal (${quality.score}), trying Playwright...`);
+  switch (decision.action) {
+    case 'accept':
+      return {
+        success: true,
+        markdown: extracted.markdown!,
+        title: extracted.title ?? '',
+        byline: extracted.byline,
+        excerpt: extracted.excerpt,
+        siteName: extracted.siteName,
+        quality,
+      };
+
+    case 'try-playwright-keep-higher': {
+      if (verbose) {
+        console.error(`📊 Quality marginal (${quality.score}), trying Playwright...`);
+      }
+
+      const playwrightResult = await tryPlaywright(safeUrl, config, 'quality_marginal', verbose);
+
+      if (playwrightResult.success && playwrightResult.quality.score > quality.score) {
+        return playwrightResult;
+      }
+
+      return {
+        success: true,
+        markdown: extracted.markdown!,
+        title: extracted.title ?? '',
+        byline: extracted.byline,
+        excerpt: extracted.excerpt,
+        siteName: extracted.siteName,
+        quality,
+      };
     }
 
-    const playwrightResult = await tryPlaywright(safeUrl, config, 'quality_marginal', verbose);
-
-    if (playwrightResult.success && playwrightResult.quality.score > quality.score) {
-      return playwrightResult;
-    }
-
-    return {
-      success: true,
-      markdown: extracted.markdown!,
-      title: extracted.title ?? '',
-      byline: extracted.byline,
-      excerpt: extracted.excerpt,
-      siteName: extracted.siteName,
-      quality,
-    };
+    case 'require-playwright':
+      if (verbose) {
+        console.error(`📊 Quality too low (${quality.score}), trying Playwright...`);
+      }
+      return tryPlaywright(safeUrl, config, 'quality_too_low', verbose);
   }
-
-  if (verbose) {
-    console.error(`📊 Quality too low (${quality.score}), trying Playwright...`);
-  }
-
-  return tryPlaywright(safeUrl, config, 'quality_too_low', verbose);
 }
 
 export { closeBrowser };
