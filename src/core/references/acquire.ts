@@ -44,6 +44,12 @@ export interface AcquireOptions {
   refetch?: boolean;
   verbose?: boolean;
   forcePlaywright?: boolean;
+  /**
+   * Whether to close the browser after this call (default: true). Batch
+   * callers (e.g., fetchLinksFromRef) set this to false and own the close
+   * themselves to avoid relaunching Chromium between iterations.
+   */
+  closeAfter?: boolean;
   fetchUrl?: typeof defaultFetchUrl;
   closeBrowser?: typeof defaultCloseBrowser;
 }
@@ -55,6 +61,7 @@ export async function acquireReference(
 ): Promise<AcquisitionOutcome> {
   const fetchUrl = opts.fetchUrl ?? defaultFetchUrl;
   const closeBrowser = opts.closeBrowser ?? defaultCloseBrowser;
+  const closeAfter = opts.closeAfter ?? true;
 
   if (!opts.refetch) {
     const cached = findByUrl(config, url);
@@ -72,7 +79,7 @@ export async function acquireReference(
   try {
     fetchResult = await fetchUrl(url, config, opts.verbose ?? false, opts.forcePlaywright ?? false);
   } finally {
-    await closeBrowser();
+    if (closeAfter) await closeBrowser();
   }
 
   if (!fetchResult.success) {

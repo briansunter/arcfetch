@@ -1,50 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { existsSync, rmSync } from 'node:fs';
-import { DEFAULT_CONFIG } from '../../src/config/defaults.js';
 import type { ArcfetchConfig } from '../../src/config/schema.js';
-import { saveToTemp } from '../../src/core/cache';
 import { fetchLinksFromRef } from '../../src/core/fetch-links';
 import type { AcquisitionOutcome } from '../../src/core/references/acquire';
+import { cachedOutcome, createCachedRef, createTestConfig, failedOutcome, fetchedOutcome } from '../helpers';
 
-const TEST_DIR = '.test-fetch-links-cache';
-const TEST_DOCS = '.test-fetch-links-docs';
-
-function getTestConfig(): ArcfetchConfig {
-  return {
-    ...DEFAULT_CONFIG,
-    paths: {
-      tempDir: TEST_DIR,
-      docsDir: TEST_DOCS,
-    },
-  };
-}
-
-function fetchedOutcome(url: string): AcquisitionOutcome {
-  const slug = url.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  return {
-    ok: true,
-    source: 'fetched',
-    refId: slug,
-    filepath: `${TEST_DIR}/${slug}.md`,
-    title: `Page for ${url}`,
-    quality: { score: 90, issues: [], isValid: true, warnings: [] },
-    markdownLength: 100,
-  };
-}
-
-function cachedOutcome(url: string): AcquisitionOutcome {
-  const slug = url.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  return {
-    ok: true,
-    source: 'cached',
-    refId: slug,
-    filepath: `${TEST_DIR}/${slug}.md`,
-  };
-}
-
-function failedOutcome(error: string): AcquisitionOutcome {
-  return { ok: false, stage: 'fetch', error };
-}
+const env = createTestConfig('fetch-links');
 
 const mockAcquire = mock(
   (url: string, _config: ArcfetchConfig, _opts?: unknown): Promise<AcquisitionOutcome> =>
@@ -53,18 +13,9 @@ const mockAcquire = mock(
 
 const mockCloseBrowser = mock(() => Promise.resolve());
 
-async function createCachedRef(config: ArcfetchConfig, title: string, url: string, body: string): Promise<string> {
-  const result = await saveToTemp(config, title, url, body);
-  if (result.error) {
-    throw new Error(`Failed to create cached ref: ${result.error}`);
-  }
-  return result.refId;
-}
-
 describe('fetchLinksFromRef', () => {
   beforeEach(() => {
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
-    if (existsSync(TEST_DOCS)) rmSync(TEST_DOCS, { recursive: true });
+    env.cleanup();
     mockAcquire.mockReset();
     mockCloseBrowser.mockReset();
 
@@ -73,13 +24,12 @@ describe('fetchLinksFromRef', () => {
   });
 
   afterEach(() => {
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
-    if (existsSync(TEST_DOCS)) rmSync(TEST_DOCS, { recursive: true });
+    env.cleanup();
   });
 
   describe('basic functionality', () => {
     test('fetches and saves all links from a cached reference', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(
         config,
         'Source Article',
@@ -105,7 +55,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('each result contains the url and a refId', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'Source', 'https://source.com', '[Only Link](https://only.com)');
 
       const result = await fetchLinksFromRef(config, refId, {
@@ -121,7 +71,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('concurrency batching', () => {
     test('processes 7 URLs in batches of 3+3+1', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const links = Array.from({ length: 7 }, (_, i) => `[Link ${i}](https://example.com/page${i})`);
       const refId = await createCachedRef(config, 'Batch Source', 'https://source.com', links.join('\n'));
 
@@ -138,7 +88,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('mixed results', () => {
     test('correctly counts new, cached, and failed results', async () => {
-      const config = getTestConfig();
+      const config = env.config;
 
       const refId = await createCachedRef(
         config,
@@ -177,7 +127,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('error handling', () => {
     test('returns status=failed with error message when acquire fails', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'Error Source', 'https://source.com', '[Bad Link](https://bad.com)');
 
       mockAcquire.mockImplementation(() => Promise.resolve(failedOutcome('HTTP 500: Internal Server Error')));
@@ -194,7 +144,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('catches thrown exceptions and returns status=failed', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'Throw Source', 'https://source.com', '[Boom](https://boom.com)');
 
       mockAcquire.mockImplementation(() => {
@@ -212,7 +162,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('returns error when source reference does not exist', async () => {
-      const config = getTestConfig();
+      const config = env.config;
 
       const result = await fetchLinksFromRef(config, 'non-existent-ref', {
         acquireReference: mockAcquire,
@@ -228,7 +178,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('already cached', () => {
     test('returns status=cached when acquire reports source=cached', async () => {
-      const config = getTestConfig();
+      const config = env.config;
 
       const refId = await createCachedRef(config, 'Has Link', 'https://source.com', '[Existing](https://existing.com)');
 
@@ -249,7 +199,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('progress callback', () => {
     test('onProgress is called for each result with correct data', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(
         config,
         'Progress Source',
@@ -285,7 +235,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('onProgress is not called when not provided', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'No Progress', 'https://source.com', '[Link](https://link.com)');
 
       const result = await fetchLinksFromRef(config, refId, {
@@ -297,7 +247,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('closeBrowser is called when onProgress throws', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'Progress Throws', 'https://source.com', '[Link](https://link.com)');
 
       await expect(
@@ -316,7 +266,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('closeBrowser cleanup', () => {
     test('closeBrowser is called after all fetches complete', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'Cleanup Source', 'https://source.com', '[Link](https://link.com)');
 
       const result = await fetchLinksFromRef(config, refId, {
@@ -329,7 +279,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('closeBrowser is called even when all fetches fail', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(config, 'All Fail', 'https://source.com', '[Bad](https://bad.com)');
 
       mockAcquire.mockImplementation(() => Promise.resolve(failedOutcome('Failed')));
@@ -344,7 +294,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('closeBrowser is not called when reference has no links', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(
         config,
         'No Links',
@@ -364,7 +314,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('empty links', () => {
     test('returns empty results when cached reference has no links', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const refId = await createCachedRef(
         config,
         'Empty Article',
@@ -384,7 +334,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('returns error and empty results for non-existent reference', async () => {
-      const config = getTestConfig();
+      const config = env.config;
 
       const result = await fetchLinksFromRef(config, 'does-not-exist', {
         acquireReference: mockAcquire,
@@ -399,7 +349,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
 
   describe('MAX_LINKS exceeded', () => {
     test('returns error when more than 200 links are present', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const links = Array.from({ length: 201 }, (_, i) => `[Link ${i}](https://example.com/page/${i})`);
       const refId = await createCachedRef(config, 'Too Many Links', 'https://source.com', links.join('\n'));
 
@@ -419,7 +369,7 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
     });
 
     test('allows exactly 200 links', async () => {
-      const config = getTestConfig();
+      const config = env.config;
       const links = Array.from({ length: 200 }, (_, i) => `[Link ${i}](https://example.com/p/${i})`);
       const refId = await createCachedRef(config, 'Max Links', 'https://source.com', links.join('\n'));
 

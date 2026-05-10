@@ -6,8 +6,25 @@ import { deleteCached, extractLinksFromCached, listCached, promoteReference } fr
 import { type FetchLinkResult, fetchLinksFromRef } from './src/core/fetch-links';
 import { closeBrowser } from './src/core/pipeline';
 import { acquireReference } from './src/core/references/acquire';
+import {
+  type OutputFormat,
+  renderDeleteResult,
+  renderFetchLinksResult,
+  renderFetchOutcome,
+  renderLinkProgressLine,
+  renderLinksResult,
+  renderListResult,
+  renderPromoteResult,
+} from './src/core/render';
 import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
+
+function cliFormat(output: 'text' | 'json' | 'summary' | 'path', pretty: boolean): OutputFormat {
+  if (output === 'json') return 'json';
+  if (output === 'path') return 'path';
+  if (output === 'summary') return 'cli-summary';
+  return pretty ? 'pretty' : 'text';
+}
 
 // ============================================================================
 // HELP
@@ -103,41 +120,6 @@ interface FetchOptions {
   forcePlaywright?: boolean;
 }
 
-function outputAlreadyCached(
-  refId: string,
-  filepath: string,
-  output: 'text' | 'json' | 'summary' | 'path',
-  pretty: boolean
-): void {
-  if (output === 'json') {
-    console.log(
-      JSON.stringify(
-        {
-          success: true,
-          alreadyExists: true,
-          refId,
-          filepath,
-          message: 'URL already fetched. Use --refetch to update.',
-        },
-        null,
-        2
-      )
-    );
-  } else if (output === 'path') {
-    console.log(filepath);
-  } else if (output === 'summary') {
-    console.log(`${refId}|${filepath}`);
-  } else if (pretty) {
-    console.log(`📦 Already cached: ${refId}`);
-    console.log(`   File: ${filepath}`);
-    console.log(`\n💡 Use --refetch to update`);
-  } else {
-    console.log(`Already cached: ${refId}`);
-    console.log(`Filepath: ${filepath}`);
-    console.log(`Use --refetch to update`);
-  }
-}
-
 async function commandFetch(options: FetchOptions): Promise<void> {
   const config = loadConfig({
     minQuality: options.minQuality,
@@ -157,105 +139,19 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     forcePlaywright: options.forcePlaywright,
   });
 
-  if (!outcome.ok) {
-    if (outcome.stage === 'save') {
-      if (options.output === 'json') {
-        console.log(JSON.stringify({ success: false, error: outcome.error }, null, 2));
-      } else {
-        console.error(`Error: Save failed: ${outcome.error}`);
-      }
-      process.exit(1);
-    }
+  const format = cliFormat(options.output, options.pretty);
+  const rendered = renderFetchOutcome({ outcome, url: options.url, query: options.query, format });
 
-    if (options.output === 'json') {
-      console.log(
-        JSON.stringify(
-          {
-            success: false,
-            error: outcome.error,
-            suggestion: outcome.suggestion,
-            quality: outcome.quality,
-          },
-          null,
-          2
-        )
-      );
+  if (!outcome.ok) {
+    if (format === 'json') {
+      console.log(rendered);
     } else {
-      console.error(`Error: ${outcome.error}`);
-      if (outcome.suggestion) {
-        console.error(`Suggestion: ${outcome.suggestion}`);
-      }
-      if (outcome.quality) {
-        console.error(`Quality: ${outcome.quality.score}/100`);
-      }
+      console.error(rendered);
     }
     process.exit(1);
   }
 
-  if (outcome.source === 'cached') {
-    outputAlreadyCached(outcome.refId, outcome.filepath, options.output, options.pretty);
-    return;
-  }
-
-  if (options.output === 'json') {
-    console.log(
-      JSON.stringify(
-        {
-          success: true,
-          refId: outcome.refId,
-          title: outcome.title,
-          byline: outcome.byline,
-          siteName: outcome.siteName,
-          excerpt: outcome.excerpt,
-          url: options.url,
-          filepath: outcome.filepath,
-          size: outcome.markdownLength,
-          tokens: Math.round(outcome.markdownLength / 4),
-          quality: outcome.quality.score,
-          usedPlaywright: outcome.usedPlaywright,
-          playwrightReason: outcome.playwrightReason,
-          query: options.query,
-        },
-        null,
-        2
-      )
-    );
-  } else if (options.output === 'summary') {
-    console.log(`${outcome.refId}|${outcome.filepath}`);
-  } else if (options.output === 'path') {
-    console.log(outcome.filepath);
-  } else if (options.pretty) {
-    console.log(`✅ Cached: ${outcome.refId}\n`);
-    console.log(`**Title**: ${outcome.title}`);
-    if (outcome.byline) console.log(`**Author**: ${outcome.byline}`);
-    if (outcome.siteName) console.log(`**Source**: ${outcome.siteName}`);
-    if (outcome.excerpt) {
-      const excerpt = outcome.excerpt.slice(0, 150);
-      console.log(`**Summary**: ${excerpt}${outcome.excerpt.length > 150 ? '...' : ''}`);
-    }
-    console.log(`\n**Saved to**: ${outcome.filepath}`);
-    console.log(`**Size**: ${outcome.markdownLength} chars (~${Math.round(outcome.markdownLength / 4)} tokens)`);
-    console.log(`**Quality**: ${outcome.quality.score}/100`);
-    if (outcome.usedPlaywright) {
-      console.log(`**Playwright**: Yes (${outcome.playwrightReason})`);
-    }
-    console.log(`\n💡 To promote to docs: arcfetch promote ${outcome.refId}`);
-  } else {
-    console.log(`Cached: ${outcome.refId}`);
-    console.log(`Title: ${outcome.title}`);
-    if (outcome.byline) console.log(`Author: ${outcome.byline}`);
-    if (outcome.siteName) console.log(`Source: ${outcome.siteName}`);
-    if (outcome.excerpt) {
-      const excerpt = outcome.excerpt.slice(0, 150);
-      console.log(`Summary: ${excerpt}${outcome.excerpt.length > 150 ? '...' : ''}`);
-    }
-    console.log(`Filepath: ${outcome.filepath}`);
-    console.log(`Size: ${outcome.markdownLength} chars (~${Math.round(outcome.markdownLength / 4)} tokens)`);
-    console.log(`Quality: ${outcome.quality.score}/100`);
-    if (outcome.usedPlaywright) {
-      console.log(`Playwright: Yes (${outcome.playwrightReason})`);
-    }
-  }
+  console.log(rendered);
 }
 
 // ============================================================================
@@ -275,35 +171,8 @@ async function commandList(
     process.exit(1);
   }
 
-  if (output === 'json') {
-    console.log(JSON.stringify(result.references, null, 2));
-    return;
-  }
-
-  if (result.references.length === 0) {
-    console.log(`No cached references in ${config.paths.tempDir}/`);
-    return;
-  }
-
-  if (pretty) {
-    console.log(`📚 Cached references (${result.references.length}):\n`);
-    for (const ref of result.references) {
-      console.log(`${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}`);
-      console.log(`   📅 ${ref.fetchedDate} | 📄 ${Math.round(ref.size / 1024)}KB`);
-      console.log(`   🔗 ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
-      console.log('');
-    }
-    console.log(`💡 To promote: arcfetch promote <ref-id>`);
-    console.log(`💡 To delete: arcfetch delete <ref-id>`);
-  } else {
-    console.log(`Cached references (${result.references.length}):\n`);
-    for (const ref of result.references) {
-      console.log(`${ref.refId} | ${ref.title.slice(0, 50)}${ref.title.length > 50 ? '...' : ''}`);
-      console.log(`  Date: ${ref.fetchedDate} | Size: ${Math.round(ref.size / 1024)}KB`);
-      console.log(`  URL: ${ref.url.slice(0, 60)}${ref.url.length > 60 ? '...' : ''}`);
-      console.log('');
-    }
-  }
+  const format: OutputFormat = output === 'json' ? 'json' : pretty ? 'pretty' : 'text';
+  console.log(renderListResult(result.references, config.paths.tempDir, format));
 }
 
 // ============================================================================
@@ -318,27 +187,15 @@ async function commandPromote(
 ): Promise<void> {
   const config = loadConfig({ tempDir: options.tempDir, docsDir: options.docsDir });
   const result = promoteReference(config, refId);
-
-  if (output === 'json') {
-    console.log(JSON.stringify(result, null, 2));
-    if (!result.success) process.exit(1);
-    return;
-  }
+  const format: OutputFormat = output === 'json' ? 'json' : pretty ? 'pretty' : 'text';
+  const rendered = renderPromoteResult(refId, result, format);
 
   if (!result.success) {
-    console.error(`Error: ${result.error}`);
+    if (format === 'json') console.log(rendered);
+    else console.error(rendered);
     process.exit(1);
   }
-
-  if (pretty) {
-    console.log(`✅ Promoted ${refId}`);
-    console.log(`   From: ${result.fromPath}`);
-    console.log(`   To:   ${result.toPath}`);
-  } else {
-    console.log(`Promoted: ${refId}`);
-    console.log(`From: ${result.fromPath}`);
-    console.log(`To: ${result.toPath}`);
-  }
+  console.log(rendered);
 }
 
 // ============================================================================
@@ -353,25 +210,15 @@ async function commandDelete(
 ): Promise<void> {
   const config = loadConfig({ tempDir: options.tempDir });
   const result = deleteCached(config, refId);
-
-  if (output === 'json') {
-    console.log(JSON.stringify(result, null, 2));
-    if (!result.success) process.exit(1);
-    return;
-  }
+  const format: OutputFormat = output === 'json' ? 'json' : pretty ? 'pretty' : 'text';
+  const rendered = renderDeleteResult(refId, result, format);
 
   if (!result.success) {
-    console.error(`Error: ${result.error}`);
+    if (format === 'json') console.log(rendered);
+    else console.error(rendered);
     process.exit(1);
   }
-
-  if (pretty) {
-    console.log(`✅ Deleted ${refId}`);
-    console.log(`   File: ${result.filepath}`);
-  } else {
-    console.log(`Deleted: ${refId}`);
-    console.log(`File: ${result.filepath}`);
-  }
+  console.log(rendered);
 }
 
 // ============================================================================
@@ -403,54 +250,15 @@ async function commandLinks(
 ): Promise<void> {
   const config = loadConfig({ tempDir: options.tempDir });
   const result = extractLinksFromCached(config, refId);
+  const format: OutputFormat = output === 'json' ? 'json' : pretty ? 'pretty' : 'text';
+  const rendered = renderLinksResult(refId, result, format);
 
   if (result.error) {
-    if (output === 'json') {
-      console.log(JSON.stringify({ success: false, error: result.error }, null, 2));
-    } else {
-      console.error(`Error: ${result.error}`);
-    }
+    if (format === 'json') console.log(rendered);
+    else console.error(rendered);
     process.exit(1);
   }
-
-  if (output === 'json') {
-    console.log(
-      JSON.stringify(
-        {
-          success: true,
-          sourceRef: result.sourceRef,
-          count: result.count,
-          links: result.links,
-        },
-        null,
-        2
-      )
-    );
-    return;
-  }
-
-  if (result.count === 0) {
-    if (pretty) {
-      console.log(`🔗 No links found in ${refId}`);
-    } else {
-      console.log(`No links found in ${refId}`);
-    }
-    return;
-  }
-
-  if (pretty) {
-    console.log(`🔗 Found ${result.count} links in ${refId}:\n`);
-    for (const link of result.links) {
-      console.log(`  ${link.text}`);
-      console.log(`    → ${link.href}`);
-    }
-    console.log(`\n💡 To fetch all: arcfetch fetch-links ${refId}`);
-  } else {
-    console.log(`Found ${result.count} links in ${refId}:\n`);
-    for (const link of result.links) {
-      console.log(`${link.text} | ${link.href}`);
-    }
-  }
+  console.log(rendered);
 }
 
 // ============================================================================
@@ -466,77 +274,33 @@ async function commandFetchLinks(
   options: Pick<ParsedOptions, 'tempDir' | 'docsDir'>
 ): Promise<void> {
   const config = loadConfig({ tempDir: options.tempDir, docsDir: options.docsDir });
+  const format: OutputFormat = output === 'json' ? 'json' : pretty ? 'pretty' : 'text';
 
-  const printProgress =
-    output !== 'json'
-      ? (r: FetchLinkResult) => {
-          if (pretty) {
-            if (r.status === 'new') {
-              console.log(`\u2713 ${r.refId} (new)`);
-            } else if (r.status === 'cached') {
-              console.log(`\u25CB ${r.refId} (already cached)`);
-            } else {
-              console.log(`\u2717 ${r.url.slice(0, 50)}... (${r.error})`);
-            }
-          } else {
-            if (r.status === 'new') {
-              console.log(`new: ${r.refId}`);
-            } else if (r.status === 'cached') {
-              console.log(`cached: ${r.refId}`);
-            } else {
-              console.log(`failed: ${r.url} - ${r.error}`);
-            }
-          }
-        }
-      : undefined;
+  const onProgress =
+    format === 'json' ? undefined : (r: FetchLinkResult) => console.log(renderLinkProgressLine(r, format));
 
-  const { results, summary, error } = await fetchLinksFromRef(config, refId, {
-    refetch,
-    verbose,
-    onProgress: printProgress,
-  });
+  const result = await fetchLinksFromRef(config, refId, { refetch, verbose, onProgress });
 
-  if (error) {
-    if (output === 'json') {
-      console.log(JSON.stringify({ success: false, error }, null, 2));
-    } else {
-      console.error(`Error: ${error}`);
-    }
+  if (result.error) {
+    const rendered = renderFetchLinksResult(refId, result, format);
+    if (format === 'json') console.log(rendered);
+    else console.error(rendered);
     process.exit(1);
   }
 
-  if (results.length === 0) {
-    if (output === 'json') {
-      console.log(JSON.stringify({ success: true, message: 'No links to fetch', results: [] }, null, 2));
-    } else if (pretty) {
-      console.log(`No links found in ${refId}`);
-    } else {
-      console.log(`No links found in ${refId}`);
-    }
+  if (format === 'json') {
+    console.log(renderFetchLinksResult(refId, result, format));
     return;
   }
 
-  if (output === 'json') {
-    console.log(
-      JSON.stringify(
-        {
-          success: true,
-          sourceRef: refId,
-          summary,
-          results,
-        },
-        null,
-        2
-      )
-    );
-  } else {
-    console.log('');
-    if (pretty) {
-      console.log(`Summary: ${summary.new} new, ${summary.cached} cached, ${summary.failed} failed`);
-    } else {
-      console.log(`Summary: ${summary.new} new, ${summary.cached} cached, ${summary.failed} failed`);
-    }
+  if (result.results.length === 0) {
+    console.log(`No links found in ${refId}`);
+    return;
   }
+
+  // Per-link lines were already streamed via onProgress; print the trailing summary.
+  console.log('');
+  console.log(`Summary: ${result.summary.new} new, ${result.summary.cached} cached, ${result.summary.failed} failed`);
 }
 
 // ============================================================================

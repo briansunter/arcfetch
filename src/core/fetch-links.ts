@@ -2,7 +2,11 @@ import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { extractLinksFromCached } from './cache';
 import { closeBrowser as defaultCloseBrowser } from './pipeline';
-import { type AcquisitionOutcome, acquireReference as defaultAcquireReference } from './references/acquire';
+import {
+  type AcquireOptions,
+  type AcquisitionOutcome,
+  acquireReference as defaultAcquireReference,
+} from './references/acquire';
 
 export interface FetchLinkResult {
   url: string;
@@ -23,11 +27,7 @@ export interface FetchLinksOptions {
   refetch?: boolean;
   verbose?: boolean;
   onProgress?: (result: FetchLinkResult) => void;
-  acquireReference?: (
-    url: string,
-    config: ArcfetchConfig,
-    opts?: { refetch?: boolean; verbose?: boolean }
-  ) => Promise<AcquisitionOutcome>;
+  acquireReference?: (url: string, config: ArcfetchConfig, opts?: AcquireOptions) => Promise<AcquisitionOutcome>;
   closeBrowser?: typeof defaultCloseBrowser;
 }
 
@@ -70,7 +70,7 @@ export async function fetchLinksFromRef(
       const batch = urls.slice(i, i + concurrency);
       const batchPromises = batch.map(async (url): Promise<FetchLinkResult> => {
         try {
-          const outcome = await acquire(url, config, { refetch, verbose });
+          const outcome = await acquire(url, config, { refetch, verbose, closeAfter: false });
 
           if (!outcome.ok) {
             return { url, status: 'failed', error: outcome.error };

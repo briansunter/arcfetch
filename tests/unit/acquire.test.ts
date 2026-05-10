@@ -1,20 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import { existsSync, rmSync } from 'node:fs';
-import { DEFAULT_CONFIG } from '../../src/config/defaults';
-import type { ArcfetchConfig } from '../../src/config/schema';
 import { saveToTemp } from '../../src/core/cache';
 import type { FetchResult } from '../../src/core/pipeline';
 import { acquireReference } from '../../src/core/references/acquire';
+import { createTestConfig } from '../helpers';
 
-const TEST_DIR = '.test-acquire-cache';
-const TEST_DOCS = '.test-acquire-docs';
-
-function getTestConfig(): ArcfetchConfig {
-  return {
-    ...DEFAULT_CONFIG,
-    paths: { tempDir: TEST_DIR, docsDir: TEST_DOCS },
-  };
-}
+const env = createTestConfig('acquire');
 
 const mockFetchUrl = mock(
   (_url: string, _config?: unknown, _verbose?: boolean, _force?: boolean): Promise<FetchResult> =>
@@ -30,8 +20,7 @@ const mockCloseBrowser = mock(() => Promise.resolve());
 
 describe('acquireReference', () => {
   beforeEach(() => {
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
-    if (existsSync(TEST_DOCS)) rmSync(TEST_DOCS, { recursive: true });
+    env.cleanup();
     mockFetchUrl.mockReset();
     mockCloseBrowser.mockReset();
     mockFetchUrl.mockImplementation(() =>
@@ -46,12 +35,11 @@ describe('acquireReference', () => {
   });
 
   afterEach(() => {
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
-    if (existsSync(TEST_DOCS)) rmSync(TEST_DOCS, { recursive: true });
+    env.cleanup();
   });
 
   test('returns cached when URL is already in the store', async () => {
-    const config = getTestConfig();
+    const config = env.config;
     await saveToTemp(config, 'Existing', 'https://existing.com', '# Body');
 
     const outcome = await acquireReference('https://existing.com', config, {
@@ -69,7 +57,7 @@ describe('acquireReference', () => {
   });
 
   test('cache miss → fetched, save, returns metadata', async () => {
-    const config = getTestConfig();
+    const config = env.config;
 
     const outcome = await acquireReference('https://example.com/article', config, {
       fetchUrl: mockFetchUrl,
@@ -90,7 +78,7 @@ describe('acquireReference', () => {
   });
 
   test('refetch=true bypasses cache lookup but still calls fetch', async () => {
-    const config = getTestConfig();
+    const config = env.config;
     await saveToTemp(config, 'Existing', 'https://existing.com', '# Old body');
 
     const outcome = await acquireReference('https://existing.com', config, {
@@ -104,7 +92,7 @@ describe('acquireReference', () => {
   });
 
   test('fetch failure returns ok=false stage=fetch with error details', async () => {
-    const config = getTestConfig();
+    const config = env.config;
     mockFetchUrl.mockImplementation(() =>
       Promise.resolve({
         success: false as const,
@@ -128,8 +116,39 @@ describe('acquireReference', () => {
     expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
   });
 
+  test('closeAfter=false skips closeBrowser even on success', async () => {
+    const config = env.config;
+
+    const outcome = await acquireReference('https://example.com/article', config, {
+      closeAfter: false,
+      fetchUrl: mockFetchUrl,
+      closeBrowser: mockCloseBrowser,
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(mockFetchUrl).toHaveBeenCalledTimes(1);
+    expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
+  });
+
+  test('closeAfter=false skips closeBrowser even when fetch throws', async () => {
+    const config = env.config;
+    mockFetchUrl.mockImplementation(() => {
+      throw new Error('boom');
+    });
+
+    await expect(
+      acquireReference('https://kaboom.com', config, {
+        closeAfter: false,
+        fetchUrl: mockFetchUrl,
+        closeBrowser: mockCloseBrowser,
+      })
+    ).rejects.toThrow('boom');
+
+    expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
+  });
+
   test('closeBrowser is called even when fetch throws', async () => {
-    const config = getTestConfig();
+    const config = env.config;
     mockFetchUrl.mockImplementation(() => {
       throw new Error('boom');
     });
