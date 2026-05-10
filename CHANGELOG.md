@@ -1,3 +1,18 @@
+## [1.2.4](https://github.com/briansunter/arcfetch/compare/v1.2.3...v1.2.4) (2026-05-10)
+
+
+### Refactors
+
+Architecture-deepening round 3 — internal refactors with no user-visible behavior change.
+
+* extract `acquireReference` seam and Reference persistence module ([dcf5174](https://github.com/briansunter/arcfetch/commit/dcf5174))
+* render-layer, MCP-tool registrar, shared test fixtures, CONTEXT.md ([f1fc302](https://github.com/briansunter/arcfetch/commit/f1fc302))
+* drop `closeAfter`; `acquireReference` no longer touches the browser lifecycle — callers own `closeBrowser()` ([bcbe6e0](https://github.com/briansunter/arcfetch/commit/bcbe6e0))
+* consolidate `src/config/` loader; isolate legacy `SOFETCH_*` env-var fallbacks ([c08168e](https://github.com/briansunter/arcfetch/commit/c08168e))
+* extract Quality-Score band routing into pure `quality-router` decision function ([f577ab1](https://github.com/briansunter/arcfetch/commit/f577ab1))
+* flatten `src/core/playwright/` into single `browser.ts`; drop unused `BrowserManager` interface; ADR-0003 rewritten ([1c39601](https://github.com/briansunter/arcfetch/commit/1c39601))
+* relocate renderer to `src/ui/`; rename `'cli-summary'` format to `'compact'` ([4d5d098](https://github.com/briansunter/arcfetch/commit/4d5d098))
+
 ## [1.2.3](https://github.com/briansunter/arcfetch/compare/v1.2.2...v1.2.3) (2026-05-01)
 
 
