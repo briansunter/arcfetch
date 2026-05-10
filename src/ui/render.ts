@@ -1,14 +1,18 @@
-import type { CachedReference, DeleteResult, LinkExtractionResult, PromoteResult } from './cache';
-import type { FetchLinkResult, FetchLinksFromRefResult } from './fetch-links';
-import type { AcquisitionOutcome } from './references/acquire';
+import type { CachedReference, DeleteResult, LinkExtractionResult, PromoteResult } from '../core/cache';
+import type { FetchLinkResult, FetchLinksFromRefResult } from '../core/fetch-links';
+import type { AcquisitionOutcome } from '../core/references/acquire';
 
 /**
  * Output format names used by both surfaces. Each surface maps its CLI flags
  * or MCP arguments down to one of these. The renderer does not branch on
  * surface — surface-specific idioms (e.g. `--refetch` vs `refetch: true`) are
  * handled here based on the chosen format.
+ *
+ * `compact` is the one-line `${refId}|${filepath}` shape used by callers that
+ * want a parseable single-token-pair summary (e.g. shell pipelines). The name
+ * describes the shape, not the consumer.
  */
-export type OutputFormat = 'text' | 'pretty' | 'json' | 'path' | 'cli-summary';
+export type OutputFormat = 'text' | 'pretty' | 'json' | 'path' | 'compact';
 
 interface FetchRenderInput {
   outcome: AcquisitionOutcome;
@@ -63,7 +67,7 @@ function renderFetchFailure(outcome: Extract<AcquisitionOutcome, { ok: false }>,
 
 function renderCachedOutcome(refId: string, filepath: string, format: OutputFormat): string {
   if (format === 'path') return filepath;
-  if (format === 'cli-summary') return `${refId}|${filepath}`;
+  if (format === 'compact') return `${refId}|${filepath}`;
 
   if (format === 'json') {
     return JSON.stringify(
@@ -93,7 +97,7 @@ function renderFetchedOutcome(
   format: OutputFormat
 ): string {
   if (format === 'path') return outcome.filepath;
-  if (format === 'cli-summary') return `${outcome.refId}|${outcome.filepath}`;
+  if (format === 'compact') return `${outcome.refId}|${outcome.filepath}`;
 
   if (format === 'json') {
     return JSON.stringify(
@@ -281,6 +285,11 @@ export function renderLinksResult(refId: string, result: LinkExtractionResult, f
 
 /**
  * Render a single per-link progress event.
+ *
+ * Exported because `fetchLinksFromRef` streams per-link results through an
+ * `onProgress` callback rather than buffering, and the CLI needs to render
+ * each line as it arrives. The final summary built by `renderFetchLinksResult`
+ * uses the same helper.
  */
 export function renderLinkProgressLine(result: FetchLinkResult, format: OutputFormat): string {
   if (format === 'pretty') {

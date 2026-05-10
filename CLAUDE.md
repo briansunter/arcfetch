@@ -69,6 +69,9 @@ Key modules:
 - `fetch-links.ts` - Concurrent fetch of links extracted from a cached reference (max 3 in flight, MAX_LINKS=200).
 - `browser.ts` - Local Playwright fallback (singleton Chromium + stealth plugin); exports `fetchWithBrowser` and `closeBrowser`. See ADR-0003.
 
+### Presentation (`src/ui/`)
+- `render.ts` - Output rendering for both CLI and MCP. Single `OutputFormat` union (`text` | `pretty` | `json` | `path` | `compact`). Each surface maps its own flags/args to one of these and consumes the resulting string. The renderer does not know about CLI flags or MCP arguments.
+
 ### Configuration (`src/config/`)
 Config loading priority: CLI args → env vars → config file → defaults
 

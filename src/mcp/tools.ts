@@ -12,7 +12,7 @@ import {
   renderLinksResult,
   renderListResult,
   renderPromoteResult,
-} from '../core/render';
+} from '../ui/render';
 import { type McpTool, mcpText } from './register';
 
 function mcpFormat(outputFormat: 'summary' | 'path' | 'json' | undefined): OutputFormat {

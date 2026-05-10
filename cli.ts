@@ -15,14 +15,14 @@ import {
   renderLinksResult,
   renderListResult,
   renderPromoteResult,
-} from './src/core/render';
+} from './src/ui/render';
 import { getErrorMessage } from './src/utils/error';
 import { getVersion } from './src/utils/version';
 
 function cliFormat(output: 'text' | 'json' | 'summary' | 'path', pretty: boolean): OutputFormat {
   if (output === 'json') return 'json';
   if (output === 'path') return 'path';
-  if (output === 'summary') return 'cli-summary';
+  if (output === 'summary') return 'compact';
   return pretty ? 'pretty' : 'text';
 }
 
