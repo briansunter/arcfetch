@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { loadConfig } from '../config/index';
 import { deleteCached, extractLinksFromCached, listCached, promoteReference } from '../core/cache';
 import { fetchLinksFromRef } from '../core/fetch-links';
+import { closeBrowser } from '../core/pipeline';
 import { acquireReference } from '../core/references/acquire';
 import {
   type OutputFormat,
@@ -75,7 +76,12 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
   argsSchema: FetchUrlArgs,
   handle: async (args) => {
     const config = loadConfig({ minQuality: args.minQuality, tempDir: args.tempDir });
-    const outcome = await acquireReference(args.url, config, { query: args.query, refetch: args.refetch });
+    let outcome: Awaited<ReturnType<typeof acquireReference>>;
+    try {
+      outcome = await acquireReference(args.url, config, { query: args.query, refetch: args.refetch });
+    } finally {
+      await closeBrowser();
+    }
     return mcpText(
       renderFetchOutcome({ outcome, url: args.url, query: args.query, format: mcpFormat(args.outputFormat) })
     );

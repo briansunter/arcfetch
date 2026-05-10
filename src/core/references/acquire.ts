@@ -1,7 +1,7 @@
 import type { ArcfetchConfig } from '../../config/schema';
 import type { ValidationResult } from '../../utils/markdown-validator';
 import { findByUrl, saveToTemp } from '../cache';
-import { closeBrowser as defaultCloseBrowser, fetchUrl as defaultFetchUrl, type FetchResult } from '../pipeline';
+import { fetchUrl as defaultFetchUrl, type FetchResult } from '../pipeline';
 
 export type AcquisitionOutcome =
   | {
@@ -44,24 +44,21 @@ export interface AcquireOptions {
   refetch?: boolean;
   verbose?: boolean;
   forcePlaywright?: boolean;
-  /**
-   * Whether to close the browser after this call (default: true). Batch
-   * callers (e.g., fetchLinksFromRef) set this to false and own the close
-   * themselves to avoid relaunching Chromium between iterations.
-   */
-  closeAfter?: boolean;
   fetchUrl?: typeof defaultFetchUrl;
-  closeBrowser?: typeof defaultCloseBrowser;
 }
 
+/**
+ * Acquire a Reference for a URL. Never touches the browser lifecycle —
+ * callers own `closeBrowser()`. Single-shot callers (CLI, MCP) wrap their
+ * one call in `try { acquireReference(...) } finally { closeBrowser() }`;
+ * batch callers (fetch-links) wrap the whole batch loop once.
+ */
 export async function acquireReference(
   url: string,
   config: ArcfetchConfig,
   opts: AcquireOptions = {}
 ): Promise<AcquisitionOutcome> {
   const fetchUrl = opts.fetchUrl ?? defaultFetchUrl;
-  const closeBrowser = opts.closeBrowser ?? defaultCloseBrowser;
-  const closeAfter = opts.closeAfter ?? true;
 
   if (!opts.refetch) {
     const cached = findByUrl(config, url);
@@ -75,12 +72,7 @@ export async function acquireReference(
     }
   }
 
-  let fetchResult: FetchResult;
-  try {
-    fetchResult = await fetchUrl(url, config, opts.verbose ?? false, opts.forcePlaywright ?? false);
-  } finally {
-    if (closeAfter) await closeBrowser();
-  }
+  const fetchResult: FetchResult = await fetchUrl(url, config, opts.verbose ?? false, opts.forcePlaywright ?? false);
 
   if (!fetchResult.success) {
     return {

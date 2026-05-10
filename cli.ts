@@ -132,12 +132,17 @@ async function commandFetch(options: FetchOptions): Promise<void> {
     console.error('🔧 Config:', JSON.stringify(config, null, 2));
   }
 
-  const outcome = await acquireReference(options.url, config, {
-    query: options.query,
-    refetch: options.refetch,
-    verbose: options.verbose,
-    forcePlaywright: options.forcePlaywright,
-  });
+  let outcome: Awaited<ReturnType<typeof acquireReference>>;
+  try {
+    outcome = await acquireReference(options.url, config, {
+      query: options.query,
+      refetch: options.refetch,
+      verbose: options.verbose,
+      forcePlaywright: options.forcePlaywright,
+    });
+  } finally {
+    await closeBrowser();
+  }
 
   const format = cliFormat(options.output, options.pretty);
   const rendered = renderFetchOutcome({ outcome, url: options.url, query: options.query, format });

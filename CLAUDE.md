@@ -114,7 +114,7 @@ Fetched content is saved as markdown files with YAML frontmatter:
 
 ## Gotchas
 - Playwright is installed via `postinstall` script with `|| true` (won't fail if install fails)
-- `closeBrowser()` is called from inside `acquireReference`'s `finally` — call sites that go through that module don't need their own cleanup
+- `acquireReference` never touches the browser lifecycle — callers own `closeBrowser()`. Single-shot callers (CLI `commandFetch`, MCP `fetch_url` handler) wrap their one call in `try { acquire } finally { closeBrowser() }`; the batch caller (`fetchLinksFromRef`) wraps its concurrency loop once so Chromium launches at most once per batch.
 - Semantic-release is configured on `master` branch with `@semantic-release/git` for auto-versioning
 
 ## Agent skills

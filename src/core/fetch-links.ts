@@ -70,7 +70,7 @@ export async function fetchLinksFromRef(
       const batch = urls.slice(i, i + concurrency);
       const batchPromises = batch.map(async (url): Promise<FetchLinkResult> => {
         try {
-          const outcome = await acquire(url, config, { refetch, verbose, closeAfter: false });
+          const outcome = await acquire(url, config, { refetch, verbose });
 
           if (!outcome.ok) {
             return { url, status: 'failed', error: outcome.error };

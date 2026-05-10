@@ -16,13 +16,10 @@ const mockFetchUrl = mock(
     })
 );
 
-const mockCloseBrowser = mock(() => Promise.resolve());
-
 describe('acquireReference', () => {
   beforeEach(() => {
     env.cleanup();
     mockFetchUrl.mockReset();
-    mockCloseBrowser.mockReset();
     mockFetchUrl.mockImplementation(() =>
       Promise.resolve({
         success: true as const,
@@ -31,7 +28,6 @@ describe('acquireReference', () => {
         quality: { score: 90, issues: [], isValid: true, warnings: [] },
       })
     );
-    mockCloseBrowser.mockImplementation(() => Promise.resolve());
   });
 
   afterEach(() => {
@@ -44,7 +40,6 @@ describe('acquireReference', () => {
 
     const outcome = await acquireReference('https://existing.com', config, {
       fetchUrl: mockFetchUrl,
-      closeBrowser: mockCloseBrowser,
     });
 
     expect(outcome.ok).toBe(true);
@@ -53,7 +48,6 @@ describe('acquireReference', () => {
       expect(outcome.refId).toBe('existing');
     }
     expect(mockFetchUrl).toHaveBeenCalledTimes(0);
-    expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
   });
 
   test('cache miss → fetched, save, returns metadata', async () => {
@@ -61,7 +55,6 @@ describe('acquireReference', () => {
 
     const outcome = await acquireReference('https://example.com/article', config, {
       fetchUrl: mockFetchUrl,
-      closeBrowser: mockCloseBrowser,
     });
 
     expect(outcome.ok).toBe(true);
@@ -74,7 +67,6 @@ describe('acquireReference', () => {
       }
     }
     expect(mockFetchUrl).toHaveBeenCalledTimes(1);
-    expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
   });
 
   test('refetch=true bypasses cache lookup but still calls fetch', async () => {
@@ -84,7 +76,6 @@ describe('acquireReference', () => {
     const outcome = await acquireReference('https://existing.com', config, {
       refetch: true,
       fetchUrl: mockFetchUrl,
-      closeBrowser: mockCloseBrowser,
     });
 
     expect(outcome.ok).toBe(true);
@@ -103,7 +94,6 @@ describe('acquireReference', () => {
 
     const outcome = await acquireReference('https://failing.com', config, {
       fetchUrl: mockFetchUrl,
-      closeBrowser: mockCloseBrowser,
     });
 
     expect(outcome.ok).toBe(false);
@@ -113,41 +103,9 @@ describe('acquireReference', () => {
     } else {
       throw new Error('expected fetch-stage failure');
     }
-    expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
   });
 
-  test('closeAfter=false skips closeBrowser even on success', async () => {
-    const config = env.config;
-
-    const outcome = await acquireReference('https://example.com/article', config, {
-      closeAfter: false,
-      fetchUrl: mockFetchUrl,
-      closeBrowser: mockCloseBrowser,
-    });
-
-    expect(outcome.ok).toBe(true);
-    expect(mockFetchUrl).toHaveBeenCalledTimes(1);
-    expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
-  });
-
-  test('closeAfter=false skips closeBrowser even when fetch throws', async () => {
-    const config = env.config;
-    mockFetchUrl.mockImplementation(() => {
-      throw new Error('boom');
-    });
-
-    await expect(
-      acquireReference('https://kaboom.com', config, {
-        closeAfter: false,
-        fetchUrl: mockFetchUrl,
-        closeBrowser: mockCloseBrowser,
-      })
-    ).rejects.toThrow('boom');
-
-    expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
-  });
-
-  test('closeBrowser is called even when fetch throws', async () => {
+  test('fetch throw propagates to caller (acquireReference owns no cleanup)', async () => {
     const config = env.config;
     mockFetchUrl.mockImplementation(() => {
       throw new Error('boom');
@@ -156,10 +114,7 @@ describe('acquireReference', () => {
     await expect(
       acquireReference('https://kaboom.com', config, {
         fetchUrl: mockFetchUrl,
-        closeBrowser: mockCloseBrowser,
       })
     ).rejects.toThrow('boom');
-
-    expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
   });
 });
