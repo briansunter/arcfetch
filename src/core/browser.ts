@@ -1,20 +1,32 @@
-import type { PlaywrightConfig } from '../../config/schema';
-import { getErrorMessage } from '../../utils/error';
-import { assertSafePublicUrl } from '../../utils/url-safety';
-import { LocalBrowserManager } from './local';
-import type { BrowserManager, FetchWithBrowserResult } from './types';
+import type { Browser } from 'playwright';
+import { chromium } from 'playwright-extra';
+import stealth from 'puppeteer-extra-plugin-stealth';
+import type { PlaywrightConfig } from '../config/schema';
+import { getErrorMessage } from '../utils/error';
+import { assertSafePublicUrl } from '../utils/url-safety';
 
-let currentManager: BrowserManager | null = null;
+/**
+ * Browser-driven fetch stage of the two-stage pipeline (see ADR-0001).
+ *
+ * This module owns the singleton Chromium instance used as the JS-rendering
+ * fallback when a Reference's simple-fetch Page scores below the quality
+ * threshold. ADR-0003 makes the policy explicit: arcfetch is local-only —
+ * there is no abstraction here for a remote browser provider, and adding one
+ * would be a deliberate rewrite, not a slot-in.
+ */
+
+chromium.use(stealth());
+
+let browserInstance: Browser | null = null;
 let activeContexts = 0;
 
-export async function getBrowserManager(config: PlaywrightConfig): Promise<BrowserManager> {
-  if (currentManager) {
-    return currentManager;
-  }
+export interface FetchWithBrowserResult {
+  html: string;
+  error?: string;
+}
 
-  // Only local mode is supported
-  currentManager = new LocalBrowserManager(config);
-  return currentManager;
+export interface FetchWithBrowserOptions {
+  verbose?: boolean;
 }
 
 /** Common desktop viewport sizes to rotate through for fingerprint diversity */
@@ -82,16 +94,50 @@ async function isSafeBrowserRequestUrl(url: string): Promise<boolean> {
   return safetyPromise;
 }
 
+/**
+ * Lazily launch the singleton Chromium instance. The browser stays alive across
+ * Acquire calls and is torn down by {@link closeBrowser} after the Reference
+ * lifecycle completes (see acquireReference's `finally`).
+ */
+async function getBrowser(config: PlaywrightConfig): Promise<Browser> {
+  if (browserInstance) {
+    return browserInstance;
+  }
+
+  try {
+    browserInstance = await chromium.launch({
+      headless: true,
+      timeout: config.timeout,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-infobars',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-background-networking',
+        '--disable-dev-shm-usage',
+      ],
+    });
+  } catch (error) {
+    const message = getErrorMessage(error);
+    if (message.includes('Executable') || message.includes('browserType.launch')) {
+      throw new Error('Playwright browsers are not installed. Run: npx playwright install chromium');
+    }
+    throw error;
+  }
+  return browserInstance;
+}
+
 export async function fetchWithBrowser(
   url: string,
   config: PlaywrightConfig,
-  verbose = false
+  options: FetchWithBrowserOptions = {}
 ): Promise<FetchWithBrowserResult> {
   activeContexts++;
 
   try {
     return await withTimeout(
-      doFetchWithBrowser(url, config, verbose),
+      doFetchWithBrowser(url, config, options.verbose ?? false),
       BROWSER_FETCH_TIMEOUT,
       `Playwright fetch ${url}`
     );
@@ -108,8 +154,7 @@ async function doFetchWithBrowser(
   config: PlaywrightConfig,
   verbose: boolean
 ): Promise<FetchWithBrowserResult> {
-  const manager = await getBrowserManager(config);
-  const browser = await manager.getBrowser();
+  const browser = await getBrowser(config);
 
   const viewport = pick(VIEWPORTS);
   const locale = pick(LOCALES);
@@ -210,8 +255,14 @@ async function doFetchWithBrowser(
   }
 }
 
+/**
+ * Tear down the singleton browser. Called from acquireReference's `finally`
+ * and from SIGINT/SIGTERM handlers in index.ts / cli.ts. Safe to call when no
+ * browser was ever launched (no-op) or while other contexts are still active
+ * (skips the close).
+ */
 export async function closeBrowser(): Promise<void> {
-  if (!currentManager) return;
+  if (!browserInstance) return;
 
   // Don't close if other contexts are still active
   if (activeContexts > 0) {
@@ -219,9 +270,18 @@ export async function closeBrowser(): Promise<void> {
   }
 
   try {
-    await withTimeout(currentManager.closeBrowser(), 5_000, 'closeBrowser');
+    await withTimeout(
+      (async () => {
+        if (browserInstance) {
+          await browserInstance.close();
+          browserInstance = null;
+        }
+      })(),
+      5_000,
+      'closeBrowser'
+    );
   } catch (e) {
     console.error('Warning: Failed to close browser:', getErrorMessage(e));
+    browserInstance = null;
   }
-  currentManager = null;
 }

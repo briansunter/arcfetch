@@ -2,8 +2,8 @@ import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { type ValidationResult, validateMarkdown } from '../utils/markdown-validator';
 import { assertSafePublicUrl } from '../utils/url-safety';
+import { closeBrowser, fetchWithBrowser } from './browser';
 import { processHtmlToMarkdown } from './extractor';
-import { closeBrowser, fetchWithBrowser } from './playwright/manager';
 import { routeByQuality } from './quality-router';
 
 export interface FetchResultSuccess {
@@ -172,7 +172,7 @@ async function tryPlaywright(
     console.error(`🎭 Trying Playwright (reason: ${reason})`);
   }
 
-  const browserResult = await fetchWithBrowser(url, config.playwright, verbose);
+  const browserResult = await fetchWithBrowser(url, config.playwright, { verbose });
 
   if (browserResult.error) {
     return {

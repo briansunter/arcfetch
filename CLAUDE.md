@@ -67,8 +67,7 @@ Key modules:
 - `extractor.ts` - HTML→markdown using Mozilla Readability + Turndown
 - `cache.ts` - The Reference store: directory scan, mtime-keyed in-memory index, save/list/find/promote/delete. Delegates format concerns to `references/format`.
 - `fetch-links.ts` - Concurrent fetch of links extracted from a cached reference (max 3 in flight, MAX_LINKS=200).
-- `playwright/manager.ts` - Playwright abstraction (local mode only, uses stealth plugin)
-- `playwright/local.ts` - Local Playwright browser management
+- `browser.ts` - Local Playwright fallback (singleton Chromium + stealth plugin); exports `fetchWithBrowser` and `closeBrowser`. See ADR-0003.
 
 ### Configuration (`src/config/`)
 Config loading priority: CLI args → env vars → config file → defaults
