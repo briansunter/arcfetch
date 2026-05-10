@@ -62,11 +62,12 @@ The fetching pipeline in `pipeline.ts` follows this flow:
 6. If score < 60: Playwright required, fail if still below threshold
 
 Key modules:
-- `references/acquire.ts` - The "URL → Reference" workflow. One function (`acquireReference`) every consumer (CLI, MCP, fetch-links) calls; owns cache lookup, fetch, save, browser cleanup. Tests fake this seam to drive higher-level logic.
+- `references/acquire.ts` - The "URL → Reference" workflow. One function (`acquireReference`) every consumer (CLI, MCP, fetch-links) calls; owns cache lookup, fetch, save. Does NOT touch the browser lifecycle — callers wrap their call in `try { acquire } finally { closeBrowser() }` (see Gotchas). Tests fake this seam to drive higher-level logic.
 - `references/format.ts` - On-disk Reference format: frontmatter (de)serialization, slug rules, the `temporary`↔`permanent` status invariant. Only place that knows the persistence shape.
 - `extractor.ts` - HTML→markdown using Mozilla Readability + Turndown
 - `cache.ts` - The Reference store: directory scan, mtime-keyed in-memory index, save/list/find/promote/delete. Delegates format concerns to `references/format`.
-- `fetch-links.ts` - Concurrent fetch of links extracted from a cached reference (max 3 in flight, MAX_LINKS=200).
+- `fetch-links.ts` - Concurrent fetch of links extracted from a cached reference (max 3 in flight, MAX_LINKS=200). Owns the batch browser lifecycle: opens Chromium once for the loop, closes once at the end.
+- `quality-router.ts` - Pure routing function. Maps a quality score + thresholds to a routing decision (`accept` / `try-playwright-keep-higher` / `require-playwright`). Implements ADR-0001's three-band algorithm; pipeline.ts dispatches on its output.
 - `browser.ts` - Local Playwright fallback (singleton Chromium + stealth plugin); exports `fetchWithBrowser` and `closeBrowser`. See ADR-0003.
 
 ### Presentation (`src/ui/`)
