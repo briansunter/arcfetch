@@ -88,12 +88,10 @@ export function loadConfigFromFile(path: string): Partial<ArcfetchConfig> {
 export function loadConfigFromEnv(): DeepPartial<ArcfetchConfig> {
   const config: DeepPartial<ArcfetchConfig> = {};
 
-  // Primary ARCFETCH_* names, with SOFETCH_* kept as a legacy fallback.
-  const minScore = process.env.ARCFETCH_MIN_SCORE ?? readLegacyEnvOverride('SOFETCH_MIN_SCORE');
-  const jsRetryThreshold =
-    process.env.ARCFETCH_JS_RETRY_THRESHOLD ?? readLegacyEnvOverride('SOFETCH_JS_RETRY_THRESHOLD');
-  const tempDir = process.env.ARCFETCH_TEMP_DIR ?? readLegacyEnvOverride('SOFETCH_TEMP_DIR');
-  const docsDir = process.env.ARCFETCH_DOCS_DIR ?? readLegacyEnvOverride('SOFETCH_DOCS_DIR');
+  const minScore = process.env.ARCFETCH_MIN_SCORE;
+  const jsRetryThreshold = process.env.ARCFETCH_JS_RETRY_THRESHOLD;
+  const tempDir = process.env.ARCFETCH_TEMP_DIR;
+  const docsDir = process.env.ARCFETCH_DOCS_DIR;
 
   if (minScore) {
     config.quality = config.quality || {};
@@ -113,14 +111,6 @@ export function loadConfigFromEnv(): DeepPartial<ArcfetchConfig> {
   }
 
   return config;
-}
-
-/**
- * Legacy `SOFETCH_*` env-var fallback. Kept around so older setups that pre-date
- * the rename to arcfetch keep working; primary `ARCFETCH_*` names always win.
- */
-function readLegacyEnvOverride(legacyName: string): string | undefined {
-  return process.env[legacyName];
 }
 
 // ---------------------------------------------------------------------------

@@ -95,8 +95,6 @@ ENVIRONMENT VARIABLES:
     ARCFETCH_TEMP_DIR           Temp directory
     ARCFETCH_DOCS_DIR           Docs directory
 
-    Legacy SOFETCH_* names are still supported.
-
 CONFIG FILE:
     Place arcfetch.config.json in project root for persistent settings.
 `);

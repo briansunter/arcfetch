@@ -1,13 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-export interface ReferenceMetadata {
-  title: string;
-  url: string;
-  fetchedDate: string;
-  query?: string;
-}
-
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n*/;
 const FRONTMATTER_BLOCK_RE = /^---\n([\s\S]*?)\n---/;
 const STATUS_TEMPORARY_RE = /^status:\s*temporary$/m;
@@ -35,7 +28,7 @@ function unescapeYamlValue(value: string): string {
   return trimmed;
 }
 
-export function parseFrontmatter(frontmatter: string): Record<string, string> {
+function parseFrontmatter(frontmatter: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of frontmatter.split('\n')) {
     const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);

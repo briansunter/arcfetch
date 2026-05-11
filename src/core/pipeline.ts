@@ -6,7 +6,7 @@ import { closeBrowser, fetchWithBrowser } from './browser';
 import { processHtmlToMarkdown } from './extractor';
 import { routeByQuality } from './quality-router';
 
-export interface FetchResultSuccess {
+interface FetchResultSuccess {
   success: true;
   markdown: string;
   title: string;
@@ -19,7 +19,7 @@ export interface FetchResultSuccess {
   suggestion?: string;
 }
 
-export interface FetchResultError {
+interface FetchResultError {
   success: false;
   error: string;
   quality?: ValidationResult;

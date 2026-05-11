@@ -12,8 +12,6 @@ import {
   slugify,
 } from './references/format';
 
-export type { ExtractedLink };
-
 export interface CachedReference {
   refId: string;
   title: string;

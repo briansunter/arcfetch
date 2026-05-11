@@ -91,7 +91,6 @@ Environment variables:
 - `ARCFETCH_JS_RETRY_THRESHOLD` - Override JS retry threshold
 - `ARCFETCH_TEMP_DIR` - Override temp directory
 - `ARCFETCH_DOCS_DIR` - Override docs directory
-- Legacy `SOFETCH_*` names are still supported
 
 ### Utilities (`src/utils/`)
 - `markdown-validator.ts` - Quality scoring based on leftover HTML tags, content length, ratio analysis

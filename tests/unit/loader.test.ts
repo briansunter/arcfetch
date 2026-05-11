@@ -14,27 +14,14 @@ describe('config loader', () => {
     delete process.env.ARCFETCH_JS_RETRY_THRESHOLD;
     delete process.env.ARCFETCH_TEMP_DIR;
     delete process.env.ARCFETCH_DOCS_DIR;
-    delete process.env.SOFETCH_MIN_SCORE;
-    delete process.env.SOFETCH_JS_RETRY_THRESHOLD;
-    delete process.env.SOFETCH_TEMP_DIR;
-    delete process.env.SOFETCH_DOCS_DIR;
-    delete process.env.SOFETCH_PLAYWRIGHT_MODE;
-    delete process.env.SOFETCH_DOCKER_IMAGE;
   });
 
   afterEach(() => {
     rmSync(TEST_DIR, { recursive: true, force: true });
-    // Clean up environment variables
     delete process.env.ARCFETCH_MIN_SCORE;
     delete process.env.ARCFETCH_JS_RETRY_THRESHOLD;
     delete process.env.ARCFETCH_TEMP_DIR;
     delete process.env.ARCFETCH_DOCS_DIR;
-    delete process.env.SOFETCH_MIN_SCORE;
-    delete process.env.SOFETCH_JS_RETRY_THRESHOLD;
-    delete process.env.SOFETCH_TEMP_DIR;
-    delete process.env.SOFETCH_DOCS_DIR;
-    delete process.env.SOFETCH_PLAYWRIGHT_MODE;
-    delete process.env.SOFETCH_DOCKER_IMAGE;
   });
 
   describe('findConfigFile', () => {
@@ -144,23 +131,6 @@ describe('config loader', () => {
       process.env.ARCFETCH_DOCS_DIR = '/my/docs';
       const result = loadConfigFromEnv();
       expect(result.paths?.docsDir).toBe('/my/docs');
-    });
-
-    test('supports legacy SOFETCH env vars', () => {
-      process.env.SOFETCH_MIN_SCORE = '65';
-      process.env.SOFETCH_TEMP_DIR = '/legacy/temp';
-
-      const result = loadConfigFromEnv();
-      expect(result.quality?.minScore).toBe(65);
-      expect(result.paths?.tempDir).toBe('/legacy/temp');
-    });
-
-    test('prefers ARCFETCH env vars over legacy SOFETCH env vars', () => {
-      process.env.ARCFETCH_MIN_SCORE = '75';
-      process.env.SOFETCH_MIN_SCORE = '65';
-
-      const result = loadConfigFromEnv();
-      expect(result.quality?.minScore).toBe(75);
     });
 
     test('loads multiple env vars together', () => {
