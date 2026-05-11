@@ -1,3 +1,10 @@
+## [1.2.5](https://github.com/briansunter/arcfetch/compare/v1.2.4...v1.2.5) (2026-05-11)
+
+
+### Bug Fixes
+
+* cut npm release for round-3 refactors ([7b6ea1f](https://github.com/briansunter/arcfetch/commit/7b6ea1fc17a67ef7fe50a8379ed72e09188a4022))
+
 ## [1.2.4](https://github.com/briansunter/arcfetch/compare/v1.2.3...v1.2.4) (2026-05-10)
 
 
