@@ -1,3 +1,17 @@
+# [1.3.0](https://github.com/briansunter/arcfetch/compare/v1.2.5...v1.3.0) (2026-05-11)
+
+
+* refactor!: drop legacy SOFETCH_* env-var fallback and unused exports ([ce789a8](https://github.com/briansunter/arcfetch/commit/ce789a8089c96364205669a2f13bb0ffa70ba608))
+
+
+### BREAKING CHANGES
+
+* `SOFETCH_MIN_SCORE`, `SOFETCH_JS_RETRY_THRESHOLD`,
+`SOFETCH_TEMP_DIR`, and `SOFETCH_DOCS_DIR` are no longer read. Use the
+`ARCFETCH_*` equivalents (canonical since v1.2.3).
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
 ## [1.2.5](https://github.com/briansunter/arcfetch/compare/v1.2.4...v1.2.5) (2026-05-11)
 
 
