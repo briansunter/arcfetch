@@ -137,6 +137,46 @@ describe('cleanMarkdownComplete: full pipeline', () => {
   });
 });
 
+describe('cleanMarkdownComplete: code protection', () => {
+  test('preserves fenced C code with angle-bracket includes and pointer syntax byte-for-byte', () => {
+    const input =
+      'Before\n\n```c\n#include <stdio.h>\n\nint main() {\n  int *ptr = NULL;\n  return 0;\n}\n```\n\nAfter';
+    const result = cleanMarkdownComplete(input);
+    expect(result).toContain('#include <stdio.h>');
+    expect(result).toContain('int *ptr = NULL;');
+    expect(result).toContain('```c\n');
+  });
+
+  test('preserves inline code with angle brackets (Array<string>)', () => {
+    const input = 'Use `Array<string>` as the type.';
+    const result = cleanMarkdownComplete(input);
+    expect(result).toContain('`Array<string>`');
+  });
+
+  test('preserves inline code with double underscores (__init__)', () => {
+    const input = 'Call `__init__` to initialize.';
+    const result = cleanMarkdownComplete(input);
+    expect(result).toContain('`__init__`');
+  });
+
+  test('preserves fenced code block content that contains double-underscores and angle brackets', () => {
+    const input = '```python\ndef __init__(self, items: List[str]) -> None:\n    self.__items = items\n```';
+    const result = cleanMarkdownComplete(input);
+    expect(result).toContain('def __init__');
+    expect(result).toContain('List[str]');
+    expect(result).toContain('self.__items');
+  });
+
+  test('still removes stray HTML tags in prose (regression guard)', () => {
+    const input = 'Text before\n\n<div>Skip to content</div>\n\nText after';
+    const result = cleanMarkdownComplete(input);
+    expect(result).not.toContain('<div>');
+    expect(result).not.toContain('</div>');
+    expect(result).toContain('Text before');
+    expect(result).toContain('Text after');
+  });
+});
+
 describe('cleanMarkdownComplete: edge cases', () => {
   test('returns empty string unchanged', () => {
     const result = cleanMarkdownComplete('');

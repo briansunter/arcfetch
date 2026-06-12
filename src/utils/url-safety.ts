@@ -49,13 +49,60 @@ function isPrivateIpv4(hostname: string): boolean {
   );
 }
 
+/**
+ * Normalise the trailing dotted-decimal IPv4 suffix that Node's `isIP` accepts
+ * in IPv6 addresses (e.g. `::ffff:127.0.0.1`).  The WHATWG URL parser always
+ * emits two hex groups for this part, but callers such as `isPrivateHost` may
+ * receive the dotted form directly.  Convert it before expansion so that
+ * `expandIpv6` only ever sees colon-hex groups.
+ */
+function normalizeDottedIpv6Suffix(addr: string): string {
+  // Match an IPv4 dotted-decimal tail after the last colon.
+  const m = addr.match(/^(.*:)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (!m) return addr;
+  const octets = m[2].split('.').map(Number);
+  const hi = ((octets[0] << 8) | octets[1]).toString(16);
+  const lo = ((octets[2] << 8) | octets[3]).toString(16);
+  return `${m[1]}${hi}:${lo}`;
+}
+
+/**
+ * Expand a validated IPv6 address string into exactly 8 hextets (as numbers).
+ * Handles `::` compression and dotted-decimal suffixes. Assumes isIP(addr) === 6.
+ */
+function expandIpv6(addr: string): number[] {
+  const normalised = normalizeDottedIpv6Suffix(addr);
+  // Split on '::' to find the compressed gap.
+  const halves = normalised.split('::');
+  const parseHalf = (s: string): number[] => (s === '' ? [] : s.split(':').map((h) => Number.parseInt(h, 16)));
+
+  let hextets: number[];
+  if (halves.length === 2) {
+    const left = parseHalf(halves[0]);
+    const right = parseHalf(halves[1]);
+    const gapSize = 8 - left.length - right.length;
+    hextets = [...left, ...Array(gapSize).fill(0), ...right];
+  } else {
+    hextets = parseHalf(halves[0]);
+  }
+
+  return hextets;
+}
+
+/**
+ * Given the last two hextets of an IPv4-mapped/NAT64 address, reconstruct
+ * the dotted-decimal IPv4 string and delegate to isPrivateIpv4.
+ */
+function mappedHextetsArePrivate(hi: number, lo: number): boolean {
+  const a = (hi >> 8) & 0xff;
+  const b = hi & 0xff;
+  const c = (lo >> 8) & 0xff;
+  const d = lo & 0xff;
+  return isPrivateIpv4(`${a}.${b}.${c}.${d}`);
+}
+
 function isPrivateIpv6(hostname: string): boolean {
   const normalized = normalizeHostname(hostname);
-
-  const ipv4Mapped = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
-  if (ipv4Mapped) {
-    return isPrivateIpv4(ipv4Mapped[1]);
-  }
 
   if (isIP(normalized) !== 6) {
     return false;
@@ -65,12 +112,33 @@ function isPrivateIpv6(hostname: string): boolean {
     return true;
   }
 
-  const firstHextetText = normalized.split(':')[0] || '0';
-  const firstHextet = Number.parseInt(firstHextetText, 16);
+  const hextets = expandIpv6(normalized);
 
-  if (!Number.isFinite(firstHextet)) {
-    return false;
+  // ::ffff:0:0/96  — IPv4-mapped addresses (hextets 0-5 are 0,0,0,0,0,0xffff)
+  if (
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0xffff
+  ) {
+    return mappedHextetsArePrivate(hextets[6], hextets[7]);
   }
+
+  // 64:ff9b::/96  — NAT64 well-known prefix (RFC 6052)
+  if (
+    hextets[0] === 0x0064 &&
+    hextets[1] === 0xff9b &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0
+  ) {
+    return mappedHextetsArePrivate(hextets[6], hextets[7]);
+  }
+
+  const firstHextet = hextets[0] ?? 0;
 
   return (
     (firstHextet >= 0xfc00 && firstHextet <= 0xfdff) ||

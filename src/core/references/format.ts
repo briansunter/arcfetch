@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n*/;
@@ -116,4 +116,39 @@ export function reserveReferencePath(dir: string, baseSlug: string): { refId: st
   }
 
   return { refId, filepath };
+}
+
+/**
+ * Atomically write a new Reference file under `dir`. Uses exclusive-create
+ * (`wx` flag) so that two concurrent callers racing on the same slug cannot
+ * both claim the same path — the second caller gets EEXIST and advances to
+ * the next `-2`, `-3`, … suffix automatically.
+ *
+ * This closes the reserve→write gap that exists when `reserveReferencePath`
+ * (existsSync loop) and the actual write are separated by an async boundary.
+ *
+ * Only use this for brand-new files. Intentional overwrites of a known path
+ * (e.g. the refetch branch) must bypass this and write directly.
+ */
+export function atomicWriteReference(
+  dir: string,
+  baseSlug: string,
+  content: string
+): { refId: string; filepath: string } {
+  const base = baseSlug.slice(0, SLUG_MAX - SLUG_SUFFIX_BUDGET).replace(/-$/g, '') || 'untitled';
+  let refId = baseSlug;
+  let filepath = join(dir, `${refId}.md`);
+  let counter = 2;
+
+  for (;;) {
+    try {
+      writeFileSync(filepath, content, { encoding: 'utf-8', flag: 'wx' });
+      return { refId, filepath };
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      refId = `${base}-${counter}`;
+      filepath = join(dir, `${refId}.md`);
+      counter++;
+    }
+  }
 }

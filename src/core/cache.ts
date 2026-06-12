@@ -1,14 +1,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { type ExtractedLink, extractLinksFromMarkdown } from '../utils/markdown-links';
 import {
+  atomicWriteReference,
   buildTemporaryReferenceFile,
   markPermanent,
   parseReferenceFile,
-  reserveReferencePath,
   slugify,
 } from './references/format';
 
@@ -119,14 +118,22 @@ export async function saveToTemp(
     mkdirSync(tempDir, { recursive: true });
 
     const slug = slugify(title);
-    const ref = existing && refetch ? existing : reserveReferencePath(tempDir, slug);
-    const refId = existing && refetch ? existing.refId : ref.refId;
-    const filepath = ref.filepath;
-
     const today = new Date().toISOString().split('T')[0];
     const fileContent = buildTemporaryReferenceFile({ title, url, fetchedDate: today, query }, content);
 
-    await writeFile(filepath, fileContent, 'utf-8');
+    let refId: string;
+    let filepath: string;
+
+    if (existing && refetch) {
+      // Intentional overwrite of a known path — not a new-file race, use direct write.
+      refId = existing.refId;
+      filepath = existing.filepath;
+      writeFileSync(filepath, fileContent, 'utf-8');
+    } else {
+      // New file: atomically claim the first free slug so concurrent saves with
+      // the same title (different URLs) cannot clobber each other.
+      ({ refId, filepath } = atomicWriteReference(tempDir, slug, fileContent));
+    }
 
     // Invalidate cache index after mutation
     cachedIndex = null;

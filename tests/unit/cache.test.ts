@@ -101,6 +101,43 @@ describe('cache operations', () => {
       expect(result2.refId).toBe(result1.refId);
       expect(result2.filepath).toBe(result1.filepath); // Same path
     });
+
+    test('concurrent saves with same title but different URLs produce distinct files', async () => {
+      const config = getTestConfig();
+
+      // Two different URLs that both produce the same slug ("same-title").
+      // Run them concurrently to exercise the atomic-exclusive-create path.
+      const [result1, result2] = await Promise.all([
+        saveToTemp(config, 'Same Title', 'https://a.com/page', 'content for a'),
+        saveToTemp(config, 'Same Title', 'https://b.com/page', 'content for b'),
+      ]);
+
+      // Both saves must succeed without errors.
+      expect(result1.error).toBeUndefined();
+      expect(result2.error).toBeUndefined();
+
+      // The two refIds must be distinct.
+      expect(result1.refId).not.toBe(result2.refId);
+
+      // Both files must exist on disk.
+      expect(existsSync(result1.filepath)).toBe(true);
+      expect(existsSync(result2.filepath)).toBe(true);
+
+      // The filepaths must be distinct.
+      expect(result1.filepath).not.toBe(result2.filepath);
+
+      // Neither file's content was lost — each URL is present in its own file.
+      const content1 = readFileSync(result1.filepath, 'utf-8');
+      const content2 = readFileSync(result2.filepath, 'utf-8');
+
+      // One file has a.com, the other has b.com — neither clobbered the other.
+      const urls = [content1, content2].map((c) => {
+        const m = c.match(/source_url:\s*"([^"]+)"/);
+        return m ? m[1] : '';
+      });
+      expect(urls).toContain('https://a.com/page');
+      expect(urls).toContain('https://b.com/page');
+    });
   });
 
   describe('listCached', () => {
