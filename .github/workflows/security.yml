@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '0 0 * * 1'  # Run every Monday at midnight UTC
 
+# Cancel superseded analyses on the same ref to save Action minutes.
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   codeql:
     name: CodeQL Analysis

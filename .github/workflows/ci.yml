@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [master]
 
+# Cancel superseded runs on the same ref to save Action minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     name: Quality Checks
@@ -29,8 +34,8 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Dependencies
-        timeout-minutes: 8
-        run: bun install --frozen-lockfile
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Lint
         run: bun run lint
@@ -60,8 +65,8 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Dependencies
-        timeout-minutes: 8
-        run: bun install --frozen-lockfile
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Run Unit Tests
         run: bun test tests/unit/
@@ -88,8 +93,16 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Dependencies
-        timeout-minutes: 8
-        run: bun install --frozen-lockfile
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install Playwright Browsers
         timeout-minutes: 8
@@ -120,8 +133,16 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Dependencies
-        timeout-minutes: 8
-        run: bun install --frozen-lockfile
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install Playwright Browsers
         timeout-minutes: 8
@@ -152,8 +173,16 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Dependencies
-        timeout-minutes: 8
-        run: bun install --frozen-lockfile
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install Playwright Browsers
         timeout-minutes: 8

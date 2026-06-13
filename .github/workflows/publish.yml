@@ -10,11 +10,16 @@ permissions:
   issues: write
   pull-requests: write
 
+# Serialize releases on a branch; never interrupt an in-flight publish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,9 +45,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
+      # --ignore-scripts skips the Playwright browser download postinstall.
+      # The publish gate runs unit tests only (no browser); CI covers the
+      # full integration/e2e suite on the same commit.
       - name: Install Dependencies
-        timeout-minutes: 8
-        run: bun install --frozen-lockfile
+        timeout-minutes: 5
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Lint
         run: bun run lint
@@ -51,7 +59,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun test
+        run: bun test tests/unit/
 
       - name: Setup BWS
         run: |
