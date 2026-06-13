@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/briansunter/arcfetch/compare/v1.3.0...v1.3.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* close SSRF IPv6 bypass, protect code in cleaner, fix slug race ([76d1adf](https://github.com/briansunter/arcfetch/commit/76d1adfba50cf8448708e8e7eba99c5fe2f58db4)), closes [#include](https://github.com/briansunter/arcfetch/issues/include)
+
 # [1.3.0](https://github.com/briansunter/arcfetch/compare/v1.2.5...v1.3.0) (2026-05-11)
 
 
