@@ -1,5 +1,7 @@
 import type { ArcfetchConfig } from '../config/schema';
+import { decodeHtmlBytes } from '../utils/encoding';
 import { getErrorMessage } from '../utils/error';
+import { MAX_HTML_BYTES } from '../utils/limits';
 import { type ValidationResult, validateMarkdown } from '../utils/markdown-validator';
 import { assertSafePublicUrl } from '../utils/url-safety';
 import { closeBrowser, fetchWithBrowser } from './browser';
@@ -37,7 +39,6 @@ interface SimpleFetchResult {
 }
 
 const MAX_REDIRECTS = 5;
-const MAX_HTML_BYTES = 10 * 1024 * 1024;
 
 function isSupportedContentType(contentType: string | null): boolean {
   if (!contentType) {
@@ -62,42 +63,66 @@ async function readTextWithLimit(response: Response): Promise<string> {
     throw new Error(`Response too large (${contentLength} bytes, max ${MAX_HTML_BYTES})`);
   }
 
-  if (!response.body) {
-    return response.text();
-  }
+  let bytes: Uint8Array;
+  if (response.body) {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
 
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value) {
+        continue;
+      }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_HTML_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error(`Response too large (over ${MAX_HTML_BYTES} bytes)`);
+      }
+      chunks.push(value);
     }
-    if (!value) {
-      continue;
-    }
 
-    totalBytes += value.byteLength;
-    if (totalBytes > MAX_HTML_BYTES) {
-      await reader.cancel().catch(() => undefined);
+    bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+  } else {
+    // No streaming body: read all bytes and apply the same byte cap.
+    bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_HTML_BYTES) {
       throw new Error(`Response too large (over ${MAX_HTML_BYTES} bytes)`);
     }
-    chunks.push(value);
   }
 
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return new TextDecoder().decode(bytes);
+  return decodeHtmlBytes(bytes, response.headers.get('content-type'));
 }
 
-async function simpleFetch(url: string, verbose = false, redirectCount = 0): Promise<SimpleFetchResult> {
+/**
+ * Discard a response body we never intend to read (manual-redirect exits,
+ * non-OK statuses, unsupported content types). Cancels the underlying stream so
+ * the connection is released promptly and swallows cancellation errors, which
+ * are not actionable for a body being thrown away.
+ */
+async function discardResponseBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
+}
+
+async function simpleFetch(
+  url: string,
+  verbose = false,
+  redirectCount = 0,
+  // One 30s budget for the entire fetch, created once at the top-level call and
+  // reused across every manual-redirect hop. Recursion must thread this same
+  // signal; a fresh timeout per hop would let a slow redirect chain extend the
+  // total wall-clock up to roughly MAX_REDIRECTS x 30s.
+  signal: AbortSignal = AbortSignal.timeout(30_000)
+): Promise<SimpleFetchResult> {
   try {
     const safety = await assertSafePublicUrl(url);
     if (!safety.safe || !safety.url) {
@@ -110,7 +135,7 @@ async function simpleFetch(url: string, verbose = false, redirectCount = 0): Pro
 
     const response = await fetch(safety.url, {
       redirect: 'manual',
-      signal: AbortSignal.timeout(30_000),
+      signal,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -122,21 +147,47 @@ async function simpleFetch(url: string, verbose = false, redirectCount = 0): Pro
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       if (!location) {
+        await discardResponseBody(response);
         return { html: '', error: `HTTP ${response.status}: redirect without Location header`, retryable: false };
       }
       if (redirectCount >= MAX_REDIRECTS) {
+        await discardResponseBody(response);
         return { html: '', error: `Too many redirects (max ${MAX_REDIRECTS})`, retryable: false };
       }
 
-      const redirectUrl = new URL(location, safety.url).toString();
-      return simpleFetch(redirectUrl, verbose, redirectCount + 1);
+      // A malformed Location (e.g. missing host, broken IPv6 literal) makes
+      // `new URL` throw. That is a definitive redirect failure, not a transient
+      // one a browser render could recover, so discard the body and surface a
+      // non-retryable error instead of letting the throw escape to the outer
+      // catch (which would mark it retryable and trigger a Playwright fallback).
+      let redirectUrl: string;
+      try {
+        redirectUrl = new URL(location, safety.url).toString();
+      } catch {
+        await discardResponseBody(response);
+        return {
+          html: '',
+          error: `HTTP ${response.status}: redirect Location is not a valid URL: ${location}`,
+          retryable: false,
+        };
+      }
+      await discardResponseBody(response);
+      return simpleFetch(redirectUrl, verbose, redirectCount + 1, signal);
     }
 
     if (!response.ok) {
-      return { html: '', error: `HTTP ${response.status}: ${response.statusText}` };
+      // 404 Not Found and 410 Gone are definitive: the resource does not exist,
+      // so a browser render cannot recover it — return the HTTP error directly
+      // without falling back to Playwright. 403, 429, and 5xx stay retryable;
+      // a real browser may bypass the bot, rate-limit, or transient-server
+      // behavior that defeated the plain fetch.
+      await discardResponseBody(response);
+      const retryable = response.status !== 404 && response.status !== 410;
+      return { html: '', error: `HTTP ${response.status}: ${response.statusText}`, retryable };
     }
 
     if (!isSupportedContentType(response.headers.get('content-type'))) {
+      await discardResponseBody(response);
       return {
         html: '',
         error: `Unsupported content type: ${response.headers.get('content-type')}`,
@@ -148,6 +199,13 @@ async function simpleFetch(url: string, verbose = false, redirectCount = 0): Pro
     try {
       html = await readTextWithLimit(response);
     } catch (error) {
+      // readTextWithLimit can throw before reading the body at all — notably
+      // when Content-Length advertises more than MAX_HTML_BYTES — leaving the
+      // stream unread. Cancel it so the connection is released, matching the
+      // other early-return paths. Cancellation errors are swallowed by the
+      // helper. This is non-retryable: an oversized response won't shrink on a
+      // Playwright retry.
+      await discardResponseBody(response);
       return { html: '', error: getErrorMessage(error), retryable: false };
     }
 
@@ -320,3 +378,14 @@ export async function fetchUrl(
 }
 
 export { closeBrowser };
+
+/**
+ * @internal Test-only seam. Exposes the file-scoped simple-fetch stage so unit
+ * tests can assert HTTP-status routing (retryable vs. non-retryable) and
+ * response-body cancellation in isolation — without going through fetchUrl
+ * (which would invoke Playwright for retryable errors) or spawning Chromium. Not
+ * part of the public API.
+ */
+export async function __simpleFetchForTesting(url: string, verbose = false): Promise<SimpleFetchResult> {
+  return simpleFetch(url, verbose);
+}

@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { ArcfetchConfig } from '../config/schema';
 import { getErrorMessage } from '../utils/error';
 import { type ExtractedLink, extractLinksFromMarkdown } from '../utils/markdown-links';
 import {
+  atomicPromoteReference,
+  atomicReplaceReference,
   atomicWriteReference,
   buildTemporaryReferenceFile,
   markPermanent,
@@ -49,6 +51,12 @@ export interface DeleteResult {
 // In-memory cache index to avoid repeated directory scans
 let cachedIndex: { references: CachedReference[]; dir: string; signature: string } | null = null;
 
+// Sort references newest-first by fetched date, ties broken by refId. Shared by
+// the disk read (listCached) and the in-memory mutation updates below so a warmed
+// index stays ordered identically to a freshly-read one.
+const byFetchedDateThenRefId = (a: CachedReference, b: CachedReference): number =>
+  b.fetchedDate.localeCompare(a.fetchedDate) || a.refId.localeCompare(b.refId);
+
 // Directory mtime alone is unreliable: macOS APFS reports `mtimeMs` with ~1ms
 // resolution, so a rapid rmSync+mkdirSync cycle (or two writes within the same
 // millisecond) produces identical timestamps. Hash filename+size+mtime per file
@@ -73,6 +81,13 @@ function getCachedIndex(config: ArcfetchConfig): CachedReference[] {
   const tempDir = config.paths.tempDir;
   const signature = getDirSignature(tempDir);
   if (signature === null) {
+    // The directory is absent/unreadable, so a warm index for it cannot still
+    // be valid — drop it. Without this, an index warmed before the directory was
+    // removed (e.g. an external `rm` of the whole temp tier) would survive and be
+    // mutated onto by later self-mutations instead of rebuilding from disk.
+    if (cachedIndex?.dir === tempDir) {
+      cachedIndex = null;
+    }
     return [];
   }
   if (cachedIndex && cachedIndex.dir === tempDir && cachedIndex.signature === signature) {
@@ -84,11 +99,65 @@ function getCachedIndex(config: ArcfetchConfig): CachedReference[] {
 }
 
 /**
- * Find a cached reference by URL
+ * Recompute and store the warmed index's directory signature after this process
+ * has mutated the temp directory on disk. The signature is the external-mutation
+ * guard that {@link getCachedIndex} recomputes on every lookup; without
+ * refreshing it the next lookup would observe a stale signature, miss, and
+ * re-read every file. If the signature cannot be recomputed (e.g. the directory
+ * was removed) the warm index is dropped so the next lookup rebuilds safely.
+ */
+function refreshCachedSignature(tempDir: string): void {
+  if (!cachedIndex) return;
+  const signature = getDirSignature(tempDir);
+  if (signature === null) {
+    cachedIndex = null;
+    return;
+  }
+  cachedIndex.signature = signature;
+}
+
+/**
+ * Canonical HTTP URL identity for duplicate detection. Fragments are never
+ * sent to servers, and the WHATWG URL parser (the same parser the fetch layer
+ * uses) canonicalises equivalent spellings such as host case and default
+ * ports — so raw string equality would let `https://example.com/a`,
+ * `https://example.com/a#s`, and `HTTPS://EXAMPLE.COM:443/a` create distinct
+ * References for the same resource. This collapses them by parsing with
+ * `new URL`, dropping the fragment, and returning the canonical string.
+ *
+ * Deliberately narrow in two ways. First, only `http:` and `https:` URLs are
+ * canonicalised: any other scheme (ftp:, file:, mailto:, ...) keeps the raw
+ * string — whether or not the WHATWG parser accepts it — so non-HTTP metadata
+ * a direct cache caller might store retains raw-string identity. Second, only
+ * the parser's own canonicalisations apply: query ordering, path case, and
+ * other spellings the parser preserves are left intact, so those remain
+ * distinct identities. A URL that fails to parse also falls back to the raw
+ * string.
+ */
+function cacheUrlIdentity(url: string): string {
+  try {
+    const parsed = new URL(url);
+    // Canonical identity is defined for HTTP(S) only; any other scheme keeps
+    // raw-string identity regardless of whether the parser accepted it.
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return url;
+    }
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Find a cached reference by URL, comparing on the canonical URL identity so
+ * equivalent spellings (fragment, host case, default port) resolve to the same
+ * Reference instead of creating duplicates.
  */
 export function findByUrl(config: ArcfetchConfig, url: string): CachedReference | null {
   const references = getCachedIndex(config);
-  return references.find((r) => r.url === url) || null;
+  const identity = cacheUrlIdentity(url);
+  return references.find((r) => cacheUrlIdentity(r.url) === identity) || null;
 }
 
 /**
@@ -119,24 +188,60 @@ export async function saveToTemp(
 
     const slug = slugify(title);
     const today = new Date().toISOString().split('T')[0];
-    const fileContent = buildTemporaryReferenceFile({ title, url, fetchedDate: today, query }, content);
+    // Preserve the originally stored source URL when a refetch arrives through
+    // an equivalent spelling (fragment/case/default-port variant): findByUrl
+    // collapses such spellings to one existing Reference, so the refetch must
+    // not rewrite that Reference's stored URL with the caller's variant. A
+    // brand-new Reference keeps the caller-provided URL verbatim.
+    const storeUrl = existing ? existing.url : url;
+    const fileContent = buildTemporaryReferenceFile({ title, url: storeUrl, fetchedDate: today, query }, content);
 
     let refId: string;
     let filepath: string;
 
     if (existing && refetch) {
-      // Intentional overwrite of a known path — not a new-file race, use direct write.
+      // Intentional overwrite of a known existing path — not a new-file race,
+      // but still crash-safe: stage the complete body in a sibling temp file and
+      // atomically rename it over the target so an interruption can never expose
+      // a partial file or destroy the previous complete body.
       refId = existing.refId;
       filepath = existing.filepath;
-      writeFileSync(filepath, fileContent, 'utf-8');
+      atomicReplaceReference(filepath, fileContent);
     } else {
       // New file: atomically claim the first free slug so concurrent saves with
       // the same title (different URLs) cannot clobber each other.
       ({ refId, filepath } = atomicWriteReference(tempDir, slug, fileContent));
     }
 
-    // Invalidate cache index after mutation
-    cachedIndex = null;
+    // Reflect the successful write in a warm index instead of dropping it for a
+    // full re-read. A compatible warm index (same temp dir) is updated in place
+    // and its signature refreshed so the next lookup hits without re-parsing; an
+    // absent/incompatible index falls back to null and rebuilds lazily on read.
+    if (cachedIndex && cachedIndex.dir === tempDir) {
+      if (existing && refetch) {
+        // `existing` is the live element of the warm index (located via
+        // findByUrl, which reads this same array); update its mutable fields in
+        // place, preserving refId/url/filepath.
+        existing.title = title;
+        existing.fetchedDate = today;
+        existing.size = fileContent.length;
+        existing.query = query || undefined;
+      } else {
+        cachedIndex.references.push({
+          refId,
+          filepath,
+          title,
+          url,
+          fetchedDate: today,
+          size: fileContent.length,
+          query: query || undefined,
+        });
+      }
+      cachedIndex.references.sort(byFetchedDateThenRefId);
+      refreshCachedSignature(tempDir);
+    } else {
+      cachedIndex = null;
+    }
 
     return { refId, filepath };
   } catch (error) {
@@ -182,7 +287,7 @@ export function listCached(config: ArcfetchConfig): ListResult {
     }
 
     // Sort by fetched date (newest first)
-    references.sort((a, b) => b.fetchedDate.localeCompare(a.fetchedDate) || a.refId.localeCompare(b.refId));
+    references.sort(byFetchedDateThenRefId);
 
     return { references };
   } catch (error) {
@@ -222,25 +327,51 @@ export function promoteReference(config: ArcfetchConfig, refId: string): Promote
     const original = readFileSync(cached.filepath, 'utf-8');
     const promoted = markPermanent(original);
 
-    const filename = basename(cached.filepath);
-    const desiredPath = join(docsDir, filename);
-    const parsedFilename = filename.match(/^(.*?)(\.md)$/);
-    let toPath = desiredPath;
-    let counter = 2;
+    // Atomically + exclusively claim a docs destination. The destination is
+    // never seen partially written, a concurrent promotion cannot clobber this
+    // one (or be clobbered), and an existing docs file is never overwritten.
+    const baseStem = basename(cached.filepath).replace(/\.md$/, '');
+    const { toPath } = atomicPromoteReference(docsDir, baseStem, promoted);
 
-    while (existsSync(toPath)) {
-      const stem = parsedFilename?.[1] ?? filename.replace(/\.md$/, '');
-      const ext = parsedFilename?.[2] ?? '.md';
-      toPath = join(docsDir, `${stem}-${counter}${ext}`);
-      counter++;
+    // The source is removed only after a complete destination has been claimed.
+    try {
+      unlinkSync(cached.filepath);
+    } catch (unlinkError) {
+      // The destination exists but the source could not be removed: do not
+      // report success while the reference lives in both tiers. Best-effort
+      // undo the destination we just claimed (this is the file we created, not
+      // a pre-existing one — atomicPromoteReference never overwrites).
+      try {
+        unlinkSync(toPath);
+      } catch (compensateError) {
+        return {
+          success: false,
+          fromPath: cached.filepath,
+          toPath,
+          error: `Promoted ${cached.filepath} to ${toPath} but could not remove source: ${getErrorMessage(
+            unlinkError
+          )}; compensating removal of destination also failed: ${getErrorMessage(compensateError)}`,
+        };
+      }
+      return {
+        success: false,
+        fromPath: cached.filepath,
+        toPath: '',
+        error: `Promoted to ${toPath} but could not remove source: ${getErrorMessage(unlinkError)}`,
+      };
     }
 
-    writeFileSync(toPath, promoted, 'utf-8');
-
-    unlinkSync(cached.filepath);
-
-    // Invalidate cache index after mutation
-    cachedIndex = null;
+    // Reflect the source removal in a warm index instead of dropping it for a
+    // full re-read. The promote wrote only to docsDir; tempDir changed solely via
+    // the source unlink above, so refreshing the signature keeps the warm index
+    // valid. On an absent/incompatible warm index, fall back to null/rebuild.
+    if (cachedIndex && cachedIndex.dir === config.paths.tempDir) {
+      const idx = cachedIndex.references.findIndex((r) => r.refId === refId);
+      if (idx >= 0) cachedIndex.references.splice(idx, 1);
+      refreshCachedSignature(config.paths.tempDir);
+    } else {
+      cachedIndex = null;
+    }
 
     return {
       success: true,
@@ -275,8 +406,16 @@ export function deleteCached(config: ArcfetchConfig, refId: string): DeleteResul
 
     unlinkSync(cached.filepath);
 
-    // Invalidate cache index after mutation
-    cachedIndex = null;
+    // Reflect the removal in a warm index instead of dropping it for a full
+    // re-read; refresh the signature so the next lookup hits. Fall back to
+    // null/rebuild on an absent/incompatible warm index.
+    if (cachedIndex && cachedIndex.dir === config.paths.tempDir) {
+      const idx = cachedIndex.references.findIndex((r) => r.refId === refId);
+      if (idx >= 0) cachedIndex.references.splice(idx, 1);
+      refreshCachedSignature(config.paths.tempDir);
+    } else {
+      cachedIndex = null;
+    }
 
     return {
       success: true,
@@ -323,7 +462,10 @@ export function extractLinksFromCached(config: ArcfetchConfig, refId: string): L
     const parsed = parseReferenceFile(content);
     const body = parsed ? parsed.body : content;
 
-    const links = extractLinksFromMarkdown(body);
+    // Resolve relative links against the reference's source URL when it is a
+    // valid http/https URL, so same-site/article-local links become crawlable.
+    // An absent or invalid source URL safely falls back to absolute-only.
+    const links = extractLinksFromMarkdown(body, cached.url);
 
     return {
       links,

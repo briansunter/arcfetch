@@ -1,5 +1,6 @@
-import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { existsSync, linkSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n*/;
 const FRONTMATTER_BLOCK_RE = /^---\n([\s\S]*?)\n---/;
@@ -119,13 +120,71 @@ export function reserveReferencePath(dir: string, baseSlug: string): { refId: st
 }
 
 /**
- * Atomically write a new Reference file under `dir`. Uses exclusive-create
- * (`wx` flag) so that two concurrent callers racing on the same slug cannot
- * both claim the same path — the second caller gets EEXIST and advances to
- * the next `-2`, `-3`, … suffix automatically.
+ * Stage complete content in a unique same-directory temp file, then claim the
+ * final path with an exclusive `linkSync`. The destination is never observed
+ * in a partially-written state and two concurrent claimants can never clobber
+ * one another:
  *
- * This closes the reserve→write gap that exists when `reserveReferencePath`
- * (existsSync loop) and the actual write are separated by an async boundary.
+ * 1. The full content is written to a unique staging file in `dir` (so the
+ *    eventual link is intra-filesystem and atomic).
+ * 2. The final candidate (`firstRefId.md`, then `<suffixBase>-2`, `-3`, …) is
+ *    claimed with `linkSync`, which is no-clobber under races — a concurrent
+ *    claimant gets EEXIST and advances to the next suffix. The destination
+ *    only appears the instant the whole file is present.
+ * 3. The staging file is removed on every exit path: success (the destination
+ *    now owns the inode), every suffix collision, and any error.
+ *
+ * Shared by the temp-write and promote paths; each supplies its own staging
+ * name, first candidate id, and suffix base so their filename/refId behaviors
+ * stay unchanged.
+ */
+function stageAndClaim(
+  dir: string,
+  content: string,
+  stagingName: string,
+  firstRefId: string,
+  suffixBase: string
+): { refId: string; finalPath: string } {
+  const stagingPath = join(dir, stagingName);
+  try {
+    writeFileSync(stagingPath, content, { encoding: 'utf-8', flag: 'wx' });
+
+    let refId = firstRefId;
+    let finalPath = join(dir, `${refId}.md`);
+    let counter = 2;
+    for (;;) {
+      try {
+        linkSync(stagingPath, finalPath);
+        return { refId, finalPath };
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+        refId = `${suffixBase}-${counter}`;
+        finalPath = join(dir, `${refId}.md`);
+        counter++;
+      }
+    }
+  } finally {
+    // Best-effort: on success the inode lives on via the claimed finalPath; on
+    // collision/error nothing final was touched. The file may already be gone
+    // or never created.
+    try {
+      unlinkSync(stagingPath);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Atomically write a new Reference file under `dir`. The complete content is
+ * staged in a unique same-directory temp file and then published with an
+ * exclusive `linkSync`, so a crash or interruption mid-write can never expose a
+ * partial `.md` in the temp tier, and two callers racing on the same slug
+ * cannot both claim it — the second gets EEXIST and advances to the next
+ * `-2`, `-3`, … suffix automatically.
+ *
+ * This closes both the reserve→write gap (vs. `reserveReferencePath`'s
+ * existsSync loop) and the partial-write window of a bare `writeFileSync`.
  *
  * Only use this for brand-new files. Intentional overwrites of a known path
  * (e.g. the refetch branch) must bypass this and write directly.
@@ -136,19 +195,65 @@ export function atomicWriteReference(
   content: string
 ): { refId: string; filepath: string } {
   const base = baseSlug.slice(0, SLUG_MAX - SLUG_SUFFIX_BUDGET).replace(/-$/g, '') || 'untitled';
-  let refId = baseSlug;
-  let filepath = join(dir, `${refId}.md`);
-  let counter = 2;
+  const { refId, finalPath } = stageAndClaim(dir, content, `.${baseSlug}.write-${randomUUID()}.tmp`, baseSlug, base);
+  return { refId, filepath: finalPath };
+}
 
-  for (;;) {
+/**
+ * Atomically + exclusively claim a *promoted* (permanent) destination under
+ * `docsDir` for `baseStem` (the source filename without `.md`).
+ *
+ * The complete promoted content is staged in a unique same-directory temp file
+ * and then published with an exclusive `linkSync` (via {@link stageAndClaim}),
+ * so the destination is never observed partially-written and two concurrent
+ * promotions of the same stem can never clobber one another; a concurrent
+ * claimant gets EEXIST and advances to the next `-2`, `-3`, … suffix.
+ *
+ * `baseStem` must already be the bare source stem (no `.md`); the caller owns
+ * that derivation so promotion's filename/refId behavior stays unchanged.
+ */
+export function atomicPromoteReference(
+  docsDir: string,
+  baseStem: string,
+  content: string
+): { refId: string; toPath: string } {
+  const { refId, finalPath } = stageAndClaim(
+    docsDir,
+    content,
+    `.${baseStem}.promote-${randomUUID()}.tmp`,
+    baseStem,
+    baseStem
+  );
+  return { refId, toPath: finalPath };
+}
+
+/**
+ * Atomically replace a *known existing* target Reference with `content`. The
+ * complete content is staged in a unique same-directory temp file using
+ * exclusive creation, then published over the target with `renameSync`. A crash
+ * or interruption mid-write can never expose a partial file or destroy the
+ * previous complete body: until the rename lands, the target still points at its
+ * old inode.
+ *
+ * Use only to overwrite a path that is known to exist (e.g. the refetch branch).
+ * New-file creation must use {@link atomicWriteReference}; promotion uses
+ * {@link atomicPromoteReference}. Unlike those, this intentionally *replaces*
+ * one known path, so it uses `renameSync` rather than the no-clobber `linkSync`.
+ */
+export function atomicReplaceReference(targetPath: string, content: string): void {
+  const stagingPath = join(dirname(targetPath), `.refetch-${randomUUID()}.tmp`);
+  try {
+    writeFileSync(stagingPath, content, { encoding: 'utf-8', flag: 'wx' });
+    renameSync(stagingPath, targetPath);
+  } finally {
+    // Best-effort: on success the staging inode now lives at targetPath (renamed
+    // away), so this is a no-op; on a staging-write or rename failure any staging
+    // file that exists is removed so the next attempt starts clean. The prior
+    // target is untouched whenever no rename landed.
     try {
-      writeFileSync(filepath, content, { encoding: 'utf-8', flag: 'wx' });
-      return { refId, filepath };
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-      refId = `${base}-${counter}`;
-      filepath = join(dir, `${refId}.md`);
-      counter++;
+      unlinkSync(stagingPath);
+    } catch {
+      /* ignore */
     }
   }
 }

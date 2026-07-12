@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { ArcfetchConfig } from '../../src/config/schema.js';
-import { fetchLinksFromRef } from '../../src/core/fetch-links';
+import { type FetchLinkResult, fetchLinksFromRef } from '../../src/core/fetch-links';
 import type { AcquisitionOutcome } from '../../src/core/references/acquire';
 import { cachedOutcome, createCachedRef, createTestConfig, failedOutcome, fetchedOutcome } from '../helpers';
 
@@ -12,6 +12,18 @@ const mockAcquire = mock(
 );
 
 const mockCloseBrowser = mock(() => Promise.resolve());
+
+/** Externally-resolvable promise so tests can drive completion order deterministically. */
+function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+/** Drain the microtask queue: the setTimeout macrotask runs only after all pending microtasks. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('fetchLinksFromRef', () => {
   beforeEach(() => {
@@ -83,6 +95,119 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
       expect(result.results.length).toBe(7);
       expect(mockAcquire).toHaveBeenCalledTimes(7);
       expect(result.summary.new).toBe(7);
+    });
+  });
+
+  describe('sliding window concurrency', () => {
+    test('refills a freed slot before the slowest initial fetch resolves and never exceeds three active', async () => {
+      const config = env.config;
+      const count = 5;
+      const urls = Array.from({ length: count }, (_, i) => `https://example.com/page${i}`);
+      const markdown = urls.map((url, i) => `[Link ${i}](${url})`).join('\n');
+      const refId = await createCachedRef(config, 'Sliding Window', 'https://source.com', markdown);
+
+      const indexByUrl = new Map(urls.map((url, i) => [url, i] as const));
+      const deferreds = urls.map(() => deferred());
+      const startOrder: number[] = [];
+      let active = 0;
+      let maxActive = 0;
+
+      mockAcquire.mockImplementation((url: string) => {
+        const idx = indexByUrl.get(url);
+        if (idx === undefined) throw new Error(`unexpected url: ${url}`);
+        active++;
+        maxActive = Math.max(maxActive, active);
+        startOrder.push(idx);
+        return deferreds[idx].promise.then(() => {
+          active--;
+          return fetchedOutcome(url);
+        });
+      });
+
+      const allDone = fetchLinksFromRef(config, refId, {
+        acquireReference: mockAcquire,
+        closeBrowser: mockCloseBrowser,
+      });
+
+      // The pool pulls the first three links synchronously, before any resolve.
+      expect(startOrder).toEqual([0, 1, 2]);
+      expect(maxActive).toBe(3);
+
+      // Free only the middle slot. Its worker immediately pulls the next link
+      // (index 3) while slots 0 and 2 are still busy.
+      deferreds[1].resolve();
+      await flush();
+
+      expect(startOrder).toEqual([0, 1, 2, 3]);
+      expect(maxActive).toBe(3);
+
+      // Free another initial slot; the last link (index 4) starts while the
+      // slow slot 0 is still busy.
+      deferreds[2].resolve();
+      await flush();
+
+      expect(startOrder).toEqual([0, 1, 2, 3, 4]);
+      expect(maxActive).toBe(3);
+
+      // Let the slow slot and the refilled slots finish.
+      for (const d of deferreds) d.resolve();
+      const result = await allDone;
+
+      expect(result.results.length).toBe(count);
+      expect(result.results.map((r) => r.url)).toEqual(urls);
+      expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    test('keeps results and progress callbacks in source order when completions finish out of order', async () => {
+      const config = env.config;
+      const count = 4;
+      const urls = Array.from({ length: count }, (_, i) => `https://example.com/page${i}`);
+      const markdown = urls.map((url, i) => `[Link ${i}](${url})`).join('\n');
+      const refId = await createCachedRef(config, 'Order Source', 'https://source.com', markdown);
+
+      const indexByUrl = new Map(urls.map((url, i) => [url, i] as const));
+      const deferreds = urls.map(() => deferred());
+      const completionOrder: number[] = [];
+
+      mockAcquire.mockImplementation((url: string) => {
+        const idx = indexByUrl.get(url);
+        if (idx === undefined) throw new Error(`unexpected url: ${url}`);
+        return deferreds[idx].promise.then(() => {
+          completionOrder.push(idx);
+          return fetchedOutcome(url);
+        });
+      });
+
+      const progressOrder: string[] = [];
+      const onProgress = mock((result: FetchLinkResult) => {
+        progressOrder.push(result.url);
+      });
+
+      const allDone = fetchLinksFromRef(config, refId, {
+        acquireReference: mockAcquire,
+        closeBrowser: mockCloseBrowser,
+        onProgress,
+      });
+
+      await flush();
+
+      // Resolve deliberately out of source order: 2 first (which also frees a
+      // worker to start link 3), then 0, 3, 1.
+      deferreds[2].resolve();
+      await flush();
+      deferreds[0].resolve();
+      await flush();
+      deferreds[3].resolve();
+      await flush();
+      deferreds[1].resolve();
+      await flush();
+
+      const result = await allDone;
+
+      expect(completionOrder).toEqual([2, 0, 3, 1]);
+      expect(result.results.map((r) => r.url)).toEqual(urls);
+      expect(progressOrder).toEqual(urls);
+      expect(onProgress).toHaveBeenCalledTimes(count);
     });
   });
 
@@ -259,6 +384,53 @@ Check [Link A](https://a.com) and [Link B](https://b.com) and [Link C](https://c
           },
         })
       ).rejects.toThrow('progress callback failed');
+
+      expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
+    });
+
+    test('waits for in-flight acquisitions to settle before closing the browser when onProgress throws', async () => {
+      const config = env.config;
+      const count = 3;
+      const urls = Array.from({ length: count }, (_, i) => `https://example.com/page${i}`);
+      const markdown = urls.map((url, i) => `[Link ${i}](${url})`).join('\n');
+      const refId = await createCachedRef(config, 'Progress Throws Multi', 'https://source.com', markdown);
+
+      const indexByUrl = new Map(urls.map((url, i) => [url, i] as const));
+      const deferreds = urls.map(() => deferred());
+
+      mockAcquire.mockImplementation((url: string) => {
+        const idx = indexByUrl.get(url);
+        if (idx === undefined) throw new Error(`unexpected url: ${url}`);
+        return deferreds[idx].promise.then(() => fetchedOutcome(url));
+      });
+
+      const onProgress = mock(() => {
+        throw new Error('progress callback failed');
+      });
+
+      const allDone = fetchLinksFromRef(config, refId, {
+        acquireReference: mockAcquire,
+        closeBrowser: mockCloseBrowser,
+        onProgress,
+      });
+
+      await flush();
+
+      // Complete only the first slot. This triggers the first progress emit,
+      // which throws and stops new launches. The other two acquisitions are
+      // still running and the browser must NOT be closed yet.
+      deferreds[0].resolve();
+      await flush();
+
+      expect(onProgress).toHaveBeenCalledTimes(1);
+      expect(mockCloseBrowser).toHaveBeenCalledTimes(0);
+
+      // Now let the already-running acquisitions settle. Only then may the
+      // browser close and the callback error rethrow.
+      deferreds[1].resolve();
+      deferreds[2].resolve();
+
+      await expect(allDone).rejects.toThrow('progress callback failed');
 
       expect(mockCloseBrowser).toHaveBeenCalledTimes(1);
     });

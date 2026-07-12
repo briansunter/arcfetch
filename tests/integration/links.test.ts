@@ -63,7 +63,7 @@ Also visit [MDN](https://developer.mozilla.org) for docs.
     expect(result.links[2]).toEqual({ text: 'MDN', href: 'https://developer.mozilla.org' });
   });
 
-  test('ignores non-http links', () => {
+  test('ignores non-http schemes but resolves relative links against the source URL', () => {
     const config = getTestConfig();
 
     createTestFile(
@@ -88,8 +88,13 @@ status: temporary
 
     const result = extractLinksFromCached(config, 'mixed-links');
 
-    expect(result.count).toBe(1);
-    expect(result.links[0].href).toBe('https://valid.com');
+    // mailto/ftp/anchor are still ignored; the relative ./file.md now resolves
+    // against the source URL.
+    expect(result.count).toBe(2);
+    expect(result.links).toEqual([
+      { text: 'Local', href: 'https://example.com/file.md' },
+      { text: 'Valid', href: 'https://valid.com' },
+    ]);
   });
 
   test('deduplicates links by URL', () => {
@@ -217,6 +222,37 @@ status: temporary
     expect(result.links[1].href).toBe('http://insecure.example.com');
   });
 
+  test('extracts angle autolinks and bare urls alongside explicit links', () => {
+    const config = getTestConfig();
+
+    createTestFile(
+      'autolink-article.md',
+      `---
+title: "Autolink Article"
+source_url: "https://example.com/auto"
+fetched_date: 2025-12-28
+type: web
+status: temporary
+---
+
+# Autolink Article
+
+Read the [docs](https://example.com/docs) then visit
+<https://example.com/angle> or just https://example.com/bare.
+`
+    );
+
+    const result = extractLinksFromCached(config, 'autolink-article');
+
+    expect(result.error).toBeUndefined();
+    expect(result.count).toBe(3);
+    expect(result.links).toEqual([
+      { text: 'docs', href: 'https://example.com/docs' },
+      { text: 'https://example.com/angle', href: 'https://example.com/angle' },
+      { text: 'https://example.com/bare', href: 'https://example.com/bare' },
+    ]);
+  });
+
   test('preserves link text exactly as written', () => {
     const config = getTestConfig();
 
@@ -243,5 +279,102 @@ status: temporary
     expect(result.links[0].text).toBe('UPPERCASE TEXT');
     expect(result.links[1].text).toBe('lowercase text');
     expect(result.links[2].text).toBe('MiXeD CaSe');
+  });
+
+  test('resolves reference-style links through the cached-reference path', () => {
+    const config = getTestConfig();
+
+    createTestFile(
+      'reference-links.md',
+      `---
+title: "Reference Links"
+source_url: "https://example.com/refs"
+fetched_date: 2025-12-28
+type: web
+status: temporary
+---
+
+# Reference Links
+
+[docs]: https://example.com/docs
+[image]: https://example.com/image.png
+
+See [the docs][docs], [docs][], and [docs].
+An inline [real](https://example.com/real) link too.
+![pic][image]
+`
+    );
+
+    const result = extractLinksFromCached(config, 'reference-links');
+
+    expect(result.error).toBeUndefined();
+    // First-occurrence order, reference + inline, dedup by href, image ignored,
+    // definition URL not harvested as a separate bare link.
+    expect(result.links).toEqual([
+      { text: 'the docs', href: 'https://example.com/docs' },
+      { text: 'real', href: 'https://example.com/real' },
+    ]);
+  });
+
+  test('resolves relative links against the cached reference source URL', () => {
+    const config = getTestConfig();
+
+    createTestFile(
+      'relative-links.md',
+      `---
+title: "Relative Links"
+source_url: "https://example.com/blog/post"
+fetched_date: 2026-07-11
+type: web
+status: temporary
+---
+
+# Relative Links
+
+See [next](/next) and [related](./related) and [parent](../up).
+A query [link](?page=2) and protocol-relative [cdn](//cdn.example.com/x).
+An [absolute](https://other.com/a) and a duplicate [dupe](/next).
+`
+    );
+
+    const result = extractLinksFromCached(config, 'relative-links');
+
+    expect(result.error).toBeUndefined();
+    expect(result.links).toEqual([
+      { text: 'next', href: 'https://example.com/next' },
+      { text: 'related', href: 'https://example.com/blog/related' },
+      { text: 'parent', href: 'https://example.com/up' },
+      { text: 'link', href: 'https://example.com/blog/post?page=2' },
+      { text: 'cdn', href: 'https://cdn.example.com/x' },
+      { text: 'absolute', href: 'https://other.com/a' },
+    ]);
+    // The duplicate [dupe](/next) collapses onto the first [next](/next).
+    expect(result.count).toBe(6);
+  });
+
+  test('does not resolve relative links when the source URL is malformed', () => {
+    const config = getTestConfig();
+
+    createTestFile(
+      'malformed-source.md',
+      `---
+title: "Malformed Source"
+source_url: "not-a-valid-url"
+fetched_date: 2026-07-11
+type: web
+status: temporary
+---
+
+# Malformed Source
+
+[next](/next) and [absolute](https://keep.com/a)
+`
+    );
+
+    const result = extractLinksFromCached(config, 'malformed-source');
+
+    expect(result.error).toBeUndefined();
+    // Malformed base disables resolution: relative link dropped, absolute kept.
+    expect(result.links).toEqual([{ text: 'absolute', href: 'https://keep.com/a' }]);
   });
 });

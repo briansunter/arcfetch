@@ -126,6 +126,23 @@ function isPrivateIpv6(hostname: string): boolean {
     return mappedHextetsArePrivate(hextets[6], hextets[7]);
   }
 
+  // ::/96  — IPv4-compatible addresses (first six hextets are zero; hextet 5 is
+  // 0 rather than the 0xffff of the mapped form above). The low 32 bits are a
+  // literal IPv4 address, so reuse the IPv4 private-range classifier. :: and ::1
+  // are already handled above; this catches e.g. ::7f00:1 (127.0.0.1) and
+  // ::a9fe:a9fe (169.254.169.254) while leaving public payloads such as
+  // ::808:808 (8.8.8.8) allowed.
+  if (
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0
+  ) {
+    return mappedHextetsArePrivate(hextets[6], hextets[7]);
+  }
+
   // 64:ff9b::/96  — NAT64 well-known prefix (RFC 6052)
   if (
     hextets[0] === 0x0064 &&
@@ -142,7 +159,10 @@ function isPrivateIpv6(hostname: string): boolean {
 
   return (
     (firstHextet >= 0xfc00 && firstHextet <= 0xfdff) ||
-    (firstHextet >= 0xfe80 && firstHextet <= 0xfebf) ||
+    // fe80::/10 link-local (fe80-febf) and the deprecated fec0::/10 site-local
+    // (fec0-feff). The two ranges are contiguous, so a single fe80-feff bound
+    // blocks both private/internal blocks.
+    (firstHextet >= 0xfe80 && firstHextet <= 0xfeff) ||
     (firstHextet >= 0xff00 && firstHextet <= 0xffff) ||
     (firstHextet === 0x2001 && normalized.startsWith('2001:db8:'))
   );

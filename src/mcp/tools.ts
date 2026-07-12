@@ -35,6 +35,19 @@ const DOCS_DIR_PROP = {
   description: 'Optional: Docs folder path (default: docs/ai/references)',
 } as const;
 
+const WAIT_STRATEGY_VALUES = ['networkidle', 'domcontentloaded', 'load'] as const;
+
+const WAIT_STRATEGY_PROP = {
+  type: 'string',
+  enum: ['networkidle', 'domcontentloaded', 'load'],
+  description: 'Optional: Playwright wait strategy: networkidle (default), domcontentloaded, load',
+} as const;
+
+const FORCE_PLAYWRIGHT_PROP = {
+  type: 'boolean',
+  description: 'Optional: Skip the simple HTTP fetch and use Playwright directly (default: false)',
+} as const;
+
 const FetchUrlArgs = z.object({
   url: z.string(),
   query: z.string().optional(),
@@ -42,6 +55,8 @@ const FetchUrlArgs = z.object({
   tempDir: z.string().optional(),
   outputFormat: z.enum(['summary', 'path', 'json']).optional(),
   refetch: z.boolean().optional(),
+  waitStrategy: z.enum(WAIT_STRATEGY_VALUES).optional(),
+  forcePlaywright: z.boolean().optional(),
 });
 
 const fetchUrlTool: McpTool<z.infer<typeof FetchUrlArgs>> = {
@@ -70,15 +85,25 @@ Returns summary with title, author, excerpt. Use Read tool to access full conten
         type: 'boolean',
         description: 'Force re-fetch and update even if URL already cached (default: false)',
       },
+      waitStrategy: WAIT_STRATEGY_PROP,
+      forcePlaywright: FORCE_PLAYWRIGHT_PROP,
     },
     required: ['url'],
   },
   argsSchema: FetchUrlArgs,
   handle: async (args) => {
-    const config = loadConfig({ minQuality: args.minQuality, tempDir: args.tempDir });
+    const config = loadConfig({
+      minQuality: args.minQuality,
+      tempDir: args.tempDir,
+      waitStrategy: args.waitStrategy,
+    });
     let outcome: Awaited<ReturnType<typeof acquireReference>>;
     try {
-      outcome = await acquireReference(args.url, config, { query: args.query, refetch: args.refetch });
+      outcome = await acquireReference(args.url, config, {
+        query: args.query,
+        refetch: args.refetch,
+        forcePlaywright: args.forcePlaywright,
+      });
     } finally {
       await closeBrowser();
     }

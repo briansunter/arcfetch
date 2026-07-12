@@ -191,7 +191,7 @@ Or using `npx` when `bun` is installed on `PATH`:
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `fetch_url` | `url`, `query?`, `minQuality?`, `refetch?`, `outputFormat?` | Fetch URL with auto JS fallback |
+| `fetch_url` | `url`, `query?`, `minQuality?`, `refetch?`, `outputFormat?`, `waitStrategy?`, `forcePlaywright?` | Fetch URL with auto JS fallback |
 | `list_cached` | `tempDir?` | List all cached references |
 | `promote_reference` | `refId`, `tempDir?`, `docsDir?` | Move from temp to docs folder |
 | `delete_cached` | `refId`, `tempDir?` | Delete a cached reference |
