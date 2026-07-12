@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/briansunter/arcfetch/compare/v1.3.1...v1.4.0) (2026-07-12)
+
+
+### Features
+
+* harden fetching and link extraction ([e958418](https://github.com/briansunter/arcfetch/commit/e95841856cf948612bc1d77d15e241578c8d4e3a))
+
 ## [1.3.1](https://github.com/briansunter/arcfetch/compare/v1.3.0...v1.3.1) (2026-06-13)
 
 
